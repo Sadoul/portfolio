@@ -12,3 +12,9 @@ desktop.ini
 # Logs / temp
 *.log
 __tmp__/
+
+# исходные растровые медиа (в репо — только .webp/.gif-версии)
+assets/**/*.png
+assets/**/*.jpg
+assets/**/*.jpeg
+assets/**/*.mp4

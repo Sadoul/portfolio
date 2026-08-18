@@ -31,70 +31,81 @@
   const clamp = (n, m) => ((n % m) + m) % m;
 
   /* =========================================================
-     3D-ЦИЛИНДР-ШЕСТЕРНЯ: монолитный барабан (сплошная боковая
-     стенка + нижнее основание, без пустоты) + выступающие
-     штрихованные зубья-блоки. Впадины показывают сплошной ствол.
+     3D-МОДЕЛЬ ШЕСТЕРНКИ (Three.js): короткий цилиндр, по кругу
+     вырезаны трапециевидные впадины => зубья. На зубьях —
+     горизонтальная штриховка (полоски), сверху — короткие
+     круговые полоски. Вращение: слабый холостой ход + скролл.
      ========================================================= */
-  const G = { VB:[0,0,360,300], cx:180, cyTop:120, Rtip:120, Rroot:102, tilt:0.30, T:32, teeth:36, half:0.28 };
-  const ryT = () => G.Rtip  * G.tilt;
-  const ryR = () => G.Rroot * G.tilt;
-  const cyBot = () => G.cyTop + G.T;
-  const Ptop = (R,ry,th) => [G.cx + R*Math.sin(th), G.cyTop + ry*Math.cos(th)];
-  const Pbot = (R,ry,th) => [G.cx + R*Math.sin(th), cyBot() + ry*Math.cos(th)];
-  const arcPath = (R,ry,cy,from,to,steps) => {
-    let d = "";
-    for (let k=0; k<=steps; k++){
-      const th = from + (to-from)*k/steps;
-      d += (k?" L":"M") + (G.cx + R*Math.sin(th)).toFixed(1) + " " + (cy + ry*Math.cos(th)).toFixed(1);
-    }
-    return d;
-  };
-
-  function renderGear(rotDeg){
-    const PI = Math.PI;
-    const rot = rotDeg * PI/180;
-    const step = 2*PI / G.teeth;
-    const hw = step * G.half;
-    let s = [`<svg viewBox="${G.VB.join(' ')}">`];
-    s.push(`<defs><pattern id="gh" width="5" height="3" patternUnits="userSpaceOnUse">
-      <rect width="5" height="3" fill="none"/>
-      <line x1="0" y1="1.5" x2="5" y2="1.5" stroke="#161413" stroke-width="0.7"/></pattern></defs>`);
-    s.push(`<g fill="none" stroke="#161413" stroke-linejoin="round" stroke-linecap="round">`);
-
-    // 1) нижнее основание (Rtip) — сплошное (нет пустоты под впадинами)
-    s.push(`<ellipse cx="${G.cx}" cy="${cyBot()}" rx="${G.Rtip}" ry="${ryT()}" fill="#efe9db" stroke="#161413" stroke-width="1.6"/>`);
-
-    // 2) ствол барабана (Rroot, передняя половина) — сплошной металл
-    let core = arcPath(G.Rroot, ryR(), G.cyTop, -PI/2, PI/2, 30);
-    core += " L" + Pbot(G.Rroot, ryR(), PI/2).map(v=>v.toFixed(1)).join(" ");
-    core += arcPath(G.Rroot, ryR(), cyBot(), PI/2, -PI/2, 30).replace("M"," L") + " Z";
-    s.push(`<path d="${core}" fill="#efe9db" stroke="#161413" stroke-width="1.6"/>`);
-
-    // 3) выступающие зубья-блоки (Rtip, передняя половина) — штриховка металла
-    for (let i=0;i<G.teeth;i++){
-      const th = i*step + rot;
-      if (Math.cos(th) <= 0.12) continue;            // боковые/задние скрыты
-      const [tlx,tly] = Ptop(G.Rtip, ryT(), th-hw);
-      const [trx,trty]= Ptop(G.Rtip, ryT(), th+hw);
-      const [brx,bry] = Pbot(G.Rtip, ryT(), th+hw);
-      const [blx,bly] = Pbot(G.Rtip, ryT(), th-hw);
-      s.push(`<polygon points="${tlx.toFixed(1)},${tly.toFixed(1)} ${trx.toFixed(1)},${trty.toFixed(1)} ${brx.toFixed(1)},${bry.toFixed(1)} ${blx.toFixed(1)},${bly.toFixed(1)}" fill="url(#gh)" stroke="#161413" stroke-width="1.5"/>`);
-    }
-
-    // 4) верхняя плоскость (Rtip) — чистая + один тонкий внутренний контур
-    s.push(`<ellipse cx="${G.cx}" cy="${G.cyTop}" rx="${G.Rtip}" ry="${ryT()}" fill="#f6f2e9" stroke="#161413" stroke-width="2"/>`);
-    s.push(`<ellipse cx="${G.cx}" cy="${G.cyTop}" rx="${G.Rtip-12}" ry="${(G.Rtip-12)*G.tilt}" stroke="#161413" stroke-width="1.2"/>`);
-
-    s.push(`</g></svg>`);
-    gearEl.innerHTML = s.join("");
-  }
-
+  let gearState = null;
   let gearAngle = 0, gearVel = 0;
-  function gearTick(){
-    gearAngle += 0.20 + gearVel;   // слабый холостой ход + инерция от скролла
-    gearVel *= 0.9;
-    renderGear(gearAngle);
-    requestAnimationFrame(gearTick);
+
+  function makeStripesTex(THREE){
+    const c = document.createElement('canvas'); c.width = 8; c.height = 32;
+    const x = c.getContext('2d');
+    x.fillStyle = '#dfd8c8'; x.fillRect(0,0,8,32);
+    x.fillStyle = '#161413';
+    for (let y=0; y<32; y+=8){ x.fillRect(0,y,8,2); }
+    const t = new THREE.CanvasTexture(c);
+    t.wrapS = t.wrapT = THREE.RepeatWrapping; t.repeat.set(1,6);
+    return t;
+  }
+  function makeRingsTex(THREE){
+    const c = document.createElement('canvas'); c.width = c.height = 256;
+    const x = c.getContext('2d');
+    x.fillStyle = '#f6f2e9'; x.fillRect(0,0,256,256);
+    x.strokeStyle = '#161413'; x.lineWidth = 1.8;
+    for (let r=14; r<=72; r+=14){ x.beginPath(); x.arc(128,128,r,0,Math.PI*2); x.stroke(); }
+    const t = new THREE.CanvasTexture(c); t.anisotropy = 4; return t;
+  }
+  function gearShape(THREE, teeth, Rroot, Rtip){
+    const s = new THREE.Shape();
+    const step = Math.PI*2/teeth, tw = step*0.44, g = step*0.05;
+    const P = (r,ang) => [r*Math.cos(ang), r*Math.sin(ang)];
+    for (let i=0;i<teeth;i++){
+      const a = i*step;
+      if (i===0) s.moveTo(...P(Rroot, a));
+      s.lineTo(...P(Rtip, a+g));
+      s.lineTo(...P(Rtip, a+tw-g));
+      s.lineTo(...P(Rroot, a+tw));
+    }
+    s.closePath();
+    return s;
+  }
+  function initGear(){
+    const THREE = window.THREE;
+    if (!THREE || !gearEl || gearState) return;
+    const w = gearEl.clientWidth || 540, h = gearEl.clientHeight || 405;
+    const scene = new THREE.Scene();
+    const camera = new THREE.PerspectiveCamera(34, w/h, 0.1, 100);
+    camera.position.set(0, 2.15, 4.7); camera.lookAt(0, -0.05, 0);
+    const renderer = new THREE.WebGLRenderer({ alpha:true, antialias:true });
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio||1, 2));
+    renderer.setSize(w, h); renderer.setClearColor(0x000000, 0);
+    gearEl.appendChild(renderer.domElement);
+
+    const teeth = 22, Rroot = 2.0, Rtip = 2.55, H = 0.78;
+    const shape = gearShape(THREE, teeth, Rroot, Rtip);
+    const geo = new THREE.ExtrudeGeometry(shape, { depth:H, bevelEnabled:false, steps:1, curveSegments:1 });
+    geo.rotateX(-Math.PI/2); geo.center();
+    const capsMat = new THREE.MeshBasicMaterial({ map: makeRingsTex(THREE), color: 0xffffff });
+    const sideMat = new THREE.MeshBasicMaterial({ map: makeStripesTex(THREE), color: 0xffffff });
+    const mesh = new THREE.Mesh(geo, [capsMat, sideMat]);
+    scene.add(mesh);
+    const edges = new THREE.EdgesGeometry(geo, 1);
+    const lines = new THREE.LineSegments(edges, new THREE.LineBasicMaterial({ color: 0x161413 }));
+    scene.add(lines);
+
+    gearState = { renderer, scene, camera, mesh, lines };
+    requestAnimationFrame(gearLoop);
+  }
+  function gearLoop(){
+    if (!gearState) return;
+    gearAngle += 0.006 + gearVel;
+    gearVel *= 0.92;
+    gearState.mesh.rotation.y = gearAngle;
+    gearState.lines.rotation.y = gearAngle;
+    gearState.renderer.render(gearState.scene, gearState.camera);
+    requestAnimationFrame(gearLoop);
   }
 
   /* =========================================================
@@ -143,7 +154,20 @@
   }
   function renderCard(p){
     const tag = (p.type || 'placeholder').toLowerCase();
-    return `<article class="card"><div class="media">${mediaHTML(p)}<span class="badge">${tag}</span></div>
+    let media;
+    if (p.gallery && p.gallery.length){
+      const gal = p.gallery;
+      media = `<div class="gallery" data-gal='${esc(JSON.stringify(gal))}' data-cur="0">
+        <img class="gal-img" src="${esc(gal[0])}" alt="${esc(L(p.title))}"/>`
+        + (gal.length > 1
+          ? `<button class="gal-arrow gal-prev" data-dir="-1" aria-label="prev">‹</button>
+             <button class="gal-arrow gal-next" data-dir="1" aria-label="next">›</button>
+             <span class="gal-count">1/${gal.length}</span>` : '')
+        + `</div>`;
+    } else {
+      media = mediaHTML(p);
+    }
+    return `<article class="card"><div class="media">${media}<span class="badge">${tag}</span></div>
       <div class="body"><h3 class="title">${esc(L(p.title))}</h3><p class="desc">${esc(L(p.desc))}</p>${linkHTML(p)}</div></article>`;
   }
   function renderProjects(tab){
@@ -177,23 +201,40 @@
   const next = () => goTo((current+1)%N);
   const prev = () => goTo((current-1+N)%N);
 
-  function setLang(l){
+  function applyLang(l){
     lang = l;
     document.documentElement.lang = l;
     langSw.querySelectorAll('.lang-btn').forEach(b => b.setAttribute('aria-pressed', b.dataset.lang === l ? 'true':'false'));
     tabButtons.forEach((b,i)=> b.innerHTML = tabHTML(L(ACTIVE[i].label)));
     applyTabs(); renderContent();
-    playSwap(l === 'ru' ? 'Всё, погналиииии!' : 'Alright, let’s goooo!');
   }
 
-  /* переход-свап при смене языка */
-  function playSwap(text){
+  const SWAP_PHRASES = {
+    ru: ['Тэкс, это сюда…','О, ещё же ЭТО!','Ага, нормас','Всё, погналиииии!'],
+    en: ['Okay, this goes here…','Oh, and THIS too!','Yeah, all good','Alright, let’s goooo!'],
+  };
+  function setLang(l){
+    playSwap(SWAP_PHRASES[l] || SWAP_PHRASES.en);
+    // переводим контент в середине свапа, когда панель закрывает экран
+    setTimeout(() => applyLang(l), 450);
+  }
+
+  /* переход-свап при смене языка: цикл фраз из оригинала whoisguilty */
+  let swapIV = null;
+  function playSwap(phrases){
     if (!swapEl || !swapTxt) return;
-    swapTxt.textContent = text;
+    let i = 0;
+    swapTxt.textContent = phrases[0];
     swapEl.classList.remove('run');
-    void swapEl.offsetWidth;   // принудительный reflow для перезапуска анимации
+    void swapEl.offsetWidth;
     swapEl.classList.add('run');
-    setTimeout(() => swapEl.classList.remove('run'), 820);
+    if (swapIV) clearInterval(swapIV);
+    swapIV = setInterval(() => {
+      i++;
+      if (i >= phrases.length){ clearInterval(swapIV); swapIV = null; return; }
+      swapTxt.textContent = phrases[i];
+    }, 175);
+    setTimeout(() => { if (swapIV){ clearInterval(swapIV); swapIV = null; } swapEl.classList.remove('run'); }, 950);
   }
 
   /* ввод */
@@ -219,10 +260,38 @@
   arrowR.addEventListener('click', next);
   langSw.querySelectorAll('.lang-btn').forEach(b => b.addEventListener('click', () => setLang(b.dataset.lang)));
 
+  /* галерея: переключение стрелками */
+  content.addEventListener('click', (e) => {
+    const btn = e.target.closest('.gal-arrow'); if (!btn) return;
+    const gal = btn.closest('.gallery'); if (!gal) return;
+    let imgs; try { imgs = JSON.parse(gal.dataset.gal || '[]'); } catch(_){ return; }
+    if (!imgs.length) return;
+    const dir = parseInt(btn.dataset.dir || '1', 10);
+    let cur = parseInt(gal.dataset.cur || '0', 10);
+    cur = (cur + dir + imgs.length) % imgs.length;
+    const img = gal.querySelector('.gal-img'); if (img) img.src = imgs[cur];
+    const cnt = gal.querySelector('.gal-count'); if (cnt) cnt.textContent = (cur+1) + '/' + imgs.length;
+    gal.dataset.cur = String(cur);
+  });
+
+  /* ресайз: обновить рендерер шестерни */
+  let rT;
+  window.addEventListener('resize', () => {
+    clearTimeout(rT);
+    rT = setTimeout(() => {
+      if (gearState && gearEl){
+        const w = gearEl.clientWidth || 540, h = gearEl.clientHeight || 405;
+        gearState.renderer.setSize(w, h);
+        gearState.camera.aspect = w/h;
+        gearState.camera.updateProjectionMatrix();
+      }
+    }, 150);
+  });
+
   /* старт */
   buildTabs();
-  setLang('ru');
-  requestAnimationFrame(gearTick);
+  applyLang('ru');
+  requestAnimationFrame(() => initGear());
 
   window.NAV = { next, prev, goTo, setLang, current:()=>current };
 })();
