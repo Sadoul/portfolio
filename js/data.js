@@ -106,7 +106,7 @@ const PROJECTS = {
   ],
   game: [
     { title:{ru:'RPWorld', en:'RPWorld'},
-      desc:{ru:'Игра на C++ с собственным движком. Подробнее — на отдельной странице.', en:'A C++ game with a custom engine. See the dedicated page.'},
+      desc:{ru:'Игра на C++ (Vulkan) с собственным движком. Подробнее — на отдельной странице.', en:'A C++ (Vulkan) game with a custom engine. See the dedicated page.'},
       type:'placeholder', src:null, link:'https://sadoul.github.io/rpworld' },
     { title:{ru:'2D-платформер', en:'2D platformer'},
       desc:{ru:'Свой движок.', en:'Custom engine.'}, type:'placeholder', src:null, link:null },
@@ -135,14 +135,14 @@ const BIO = {
     { ru:'50 Minecraft-проектов', en:'50 Minecraft projects shipped' },
     { ru:'Более 10 веб-сайтов', en:'10+ websites built' },
     { ru:'Бэкенд: архитектура и серверная логика', en:'Backend: architecture & server-side logic' },
-    { ru:'Пишу игру на C++ — собственный движок с нуля', en:'Writing a game in C++ — custom engine from scratch' },
+    { ru:'Пишу игру на C++ (Vulkan) — собственный движок с нуля', en:'Writing a game in C++ (Vulkan) — custom engine from scratch' },
     { ru:'Иду в системное программирование: изучаю Rust, Zig, Odin', en:'Heading into systems programming: studying Rust, Zig, Odin' },
   ],
   stacks: [
     { cat:{ru:'Языки',en:'Languages'}, items:['Java','Kotlin','C++','C#','Rust','Zig','Odin'] },
-    { cat:{ru:'Бэкенд и веб',en:'Backend & web'}, items:['Node.js','PostgreSQL','Redis','Docker','REST / GraphQL','TypeScript','React'] },
-    { cat:{ru:'Minecraft',en:'Minecraft'}, items:['Spigot / Paper','Bukkit API','Java'] },
-    { cat:{ru:'Game Dev',en:'Game Dev'}, items:['C++','CMake','OpenGL','SDL2','собственный движок / own engine'] },
+    { cat:{ru:'Бэкенд и данные',en:'Backend & data'}, items:['MariaDB','Tarantool','ClickHouse','NATS','ZeroMQ','gRPC'] },
+    { cat:{ru:'Minecraft',en:'Minecraft'}, items:[{ru:'ресурспаки',en:'resource packs'},{ru:'моды',en:'mods'},{ru:'лаунчеры',en:'launchers'},{ru:'плагины',en:'plugins'},'Spigot / Paper','Forge / Fabric'] },
+    { cat:{ru:'Game Dev',en:'Game Dev'}, items:['C++','Vulkan','CMake',{ru:'собственный движок',en:'custom engine'}] },
     { cat:{ru:'Системы / low-level',en:'Systems / low-level'}, items:['Rust','Zig','Odin','C','Linux','POSIX'] },
   ],
 };
