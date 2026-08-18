@@ -21,6 +21,7 @@
   const content= document.getElementById('content');
   const arrowL = document.getElementById('arrowLeft');
   const arrowR = document.getElementById('arrowRight');
+  const gearEl = document.getElementById('drumGear');
 
   let current = 0;        // индекс центральной (текущей) вкладки
   let displayAngle = 0;   // текущий отрис. угол барабана (deg)
@@ -37,8 +38,48 @@
   const clamp = (n, m) => ((n % m) + m) % m;
   const easeOutCubic = t => 1 - Math.pow(1 - t, 3);
 
+  /* ---------- 3D-шестерня с зубьями (фоновый барабан) ---------- */
+  function buildGear(){
+    const teeth = 30;
+    const Rr  = 100;   // радиус по впадинам (svg-единицы)
+    const Rt  = 118;   // радиус по вершинам зубьев
+    const hub = 24;
+    const tw  = 7;     // толщина зуба (по дуге у корня)
+    let s = [];
+    s.push(`<svg viewBox="-130 -130 260 260" preserveAspectRatio="xMidYMid meet">`);
+    s.push(`<g fill="none" stroke="#161413" stroke-width="2" stroke-linejoin="round">`);
+    // зубья
+    for (let i=0;i<teeth;i++){
+      const a = i*(360/teeth);
+      s.push(`<rect x="${Rr-1.5}" y="${-tw/2}" width="${Rt-Rr+3}" height="${tw}" transform="rotate(${a})" stroke-width="1.8"/>`);
+    }
+    // внешнее кольцо (по впадинам)
+    s.push(`<circle cx="0" cy="0" r="${Rr}" stroke-width="2"/>`);
+    // внутреннее кольцо
+    s.push(`<circle cx="0" cy="0" r="${Rr-14}" stroke-width="1.4"/>`);
+    // спицы
+    const spokes = 6;
+    for (let i=0;i<spokes;i++){
+      const a = i*(360/spokes);
+      const x1 = (hub+2)*Math.cos(a*Math.PI/180);
+      const y1 = (hub+2)*Math.sin(a*Math.PI/180);
+      const x2 = (Rr-16)*Math.cos(a*Math.PI/180);
+      const y2 = (Rr-16)*Math.sin(a*Math.PI/180);
+      s.push(`<line x1="${x1.toFixed(1)}" y1="${y1.toFixed(1)}" x2="${x2.toFixed(1)}" y2="${y2.toFixed(1)}" stroke-width="1.6"/>`);
+    }
+    // ступица
+    s.push(`<circle cx="0" cy="0" r="${hub}" stroke-width="2"/>`);
+    s.push(`<circle cx="0" cy="0" r="${hub-6}" stroke-width="1.2"/>`);
+    // центральная метка-крест
+    s.push(`<line x1="-7" y1="0" x2="7" y2="0" stroke-width="1.4"/>`);
+    s.push(`<line x1="0" y1="-7" x2="0" y2="7" stroke-width="1.4"/>`);
+    s.push(`</g></svg>`);
+    gearEl.innerHTML = s.join("");
+  }
+
   /* ---------- построение карточек ---------- */
   function build(){
+    buildGear();
     drum.innerHTML = "";
     cards = [];
     ACTIVE.forEach((tab, i) => {
@@ -78,6 +119,11 @@
   /* ---------- отрисовка угла (билборд: лицо всегда к камере) ---------- */
   function renderAngle(ang){
     drum.style.transform = `rotateX(-6deg) rotateY(${ang}deg)`;
+    // 3D-шестерня: наклонена, крутится в плоскости синхронно с барабаном
+    if (gearEl){
+      gearEl.style.transform =
+        `translate(-50%,-50%) translateZ(-280px) rotateX(26deg) rotateZ(${(-ang*1.2).toFixed(2)}deg)`;
+    }
     for (let i = 0; i < cards.length; i++){
       const a = i * STEP;
       const face = cards[i].querySelector('.face');
@@ -233,9 +279,6 @@
     clearTimeout(rT);
     rT = setTimeout(() => { layoutCards(); }, 150);
   });
-
-  /* ---------- футер: год ---------- */
-  document.getElementById('year').textContent = new Date().getFullYear();
 
   /* ---------- старт ---------- */
   build();
