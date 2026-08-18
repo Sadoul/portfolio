@@ -13,15 +13,15 @@
   --radius:18px;
   --stroke:2px;
 
-  --drum-radius:230px;     /* радиус барабана (рабочий стол) */
-  --drum-step:120deg;     /* шаг между вкладками (3 активные) */
-  --drum-w:260px;          /* ширина карточки вкладки */
-  --drum-h:340px;          /* высота карточки вкладки */
+  --drum-radius:260px;    /* радиус цилиндра (= ширина грани для 6 граней) */
+  --drum-step:60deg;      /* шаг между гранями (6 граней) */
+  --drum-w:260px;         /* ширина грани */
+  --drum-h:340px;         /* высота грани */
 }
 
 @media (max-width: 720px){
   :root{
-    --drum-radius:150px;
+    --drum-radius:190px;
     --drum-w:190px;
     --drum-h:250px;
   }
@@ -115,33 +115,43 @@ body{
 .drum-axle{
   position:absolute;
   top:50%; left:50%;
-  width:calc(var(--drum-radius)*2 + var(--drum-w));
+  width:calc(var(--drum-radius)*2 + 40px);
   height:6px;
   transform:translate(-50%,-50%);
   background:
     repeating-linear-gradient(90deg, var(--ink) 0 6px, transparent 6px 12px);
-  opacity:.18;
+  opacity:.16;
   border-radius:3px;
   pointer-events:none;
 }
 
-/* 3D-шестерня с зубьями (фоновый барабан) */
-.drum-gear{
+/* торцевые кольца цилиндра (крышки барабана) */
+.drum-cap{
   position:absolute;
-  top:50%; left:50%;
-  width:calc(var(--drum-radius)*2 + 60px);
-  height:calc(var(--drum-radius)*2 + 60px);
-  transform:translate(-50%,-50%) translateZ(-280px) rotateX(26deg) rotateZ(0deg);
-  transform-style:preserve-3d;
+  left:50%;
+  width:calc(var(--drum-radius)*2);
+  height:calc(var(--drum-radius)*2);
+  border:2px solid var(--ink);
+  border-radius:50%;
+  transform:translateX(-50%) rotateX(78deg);
+  transform-origin:center center;
   pointer-events:none;
-  opacity:.4;
-  z-index:0;
+  opacity:.45;
+  box-shadow:inset 0 0 0 5px var(--paper), inset 0 0 0 6px rgba(22,20,19,.35);
+}
+.drum-cap--top{ top:calc(50% - var(--drum-h)/2); }
+.drum-cap--bottom{ top:calc(50% + var(--drum-h)/2); }
+
+/* уголковая шестерёнка (крутится при скролле) */
+.cog{
+  width:92px; height:92px;
+  margin-left:auto;
+  pointer-events:none;
   will-change:transform;
+  opacity:.85;
 }
-.drum-gear svg{
-  width:100%; height:100%; display:block; overflow:visible;
-  filter:url(#rough-hard);
-}
+.cog svg{ width:100%; height:100%; display:block; overflow:visible; filter:url(#rough-hard); }
+@media (max-width:720px){ .cog{ width:60px; height:60px; } }
 
 .drum{
   position:relative;
@@ -151,16 +161,15 @@ body{
   transform: rotateX(-6deg) rotateY(0deg);
   will-change:transform;
 }
-.drum.no-trans{ transition:none; }
 
-/* карточка вкладки на барабане */
+/* грань цилиндра (вкладка). Задние грани скрыты */
 .drum-card{
   position:absolute;
   inset:0;
-  transform-style:preserve-3d;
   cursor:pointer;
   user-select:none;
-  backface-visibility:visible;
+  backface-visibility:hidden;
+  -webkit-backface-visibility:hidden;
 }
 .drum-card .face{
   position:absolute; inset:0;

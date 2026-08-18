@@ -1,9 +1,10 @@
 /* =========================================================
-   3D-барабан (циклический, билборд-карусель)
-   Карточки всегда лицом к камере => соседние читаемы.
-   Управление: скролл / клик по соседней / стрелки / ← →
-                / свайп / перетаскивание мышью
-   Анимация: requestAnimationFrame (плавный tween, ease-out-cubic).
+   3D-ЦИЛИНДР (барабан) — циклическая навигация по вкладкам
+   Грани смотрят наружу (настоящая поверхность цилиндра).
+   Видны: текущая грань по центру + две соседние слева/справа.
+   Цикличный. Управление: скролл / клик / стрелки / ← →
+                / свайп / перетаскивание мышью.
+   Уголковая шестерёнка крутится при скролле (+ медленный холостой ход).
    ========================================================= */
 (function(){
   "use strict";
@@ -13,7 +14,9 @@
   // только активные вкладки (4-я "Systems" скрыта => неактивна)
   const ACTIVE = TABS.filter(t => t.active);
   const N = ACTIVE.length;                 // 3
-  const STEP = 360 / N;                    // 120°
+  const COPIES = 2;                        // дублируем вкладки => 6 граней
+  const FACETS = N * COPIES;               // 6
+  const FSTEP = 360 / FACETS;              // 60°
 
   const drum   = document.getElementById('drum');
   const scene  = document.getElementById('drumScene');
@@ -23,119 +26,108 @@
   const arrowR = document.getElementById('arrowRight');
   const gearEl = document.getElementById('drumGear');
 
-  let current = 0;        // индекс центральной (текущей) вкладки
-  let displayAngle = 0;   // текущий отрис. угол барабана (deg)
-  let targetAngle = 0;    // целевой угол
-  let tween = null;       // активная анимация {from,to,start,dur,onDone}
-  let cards = [];
+  let current = 0;        // индекс центральной (текущей) грани (0..FACETS-1)
+  let displayAngle = 0;   // текущий отрис. угол цилиндра (deg)
+  let targetAngle = 0;   // целевой угол
+  let tween = null;
+  let facets = [];
 
-  const DURATION = 720;   // длительность прокрутки (ms)
+  const DURATION = 720;  // длительность прокрутки (ms)
 
-  /* ---------- утилиты ---------- */
   const radius = () =>
     parseFloat(getComputedStyle(document.documentElement)
-      .getPropertyValue('--drum-radius')) || 200;
+      .getPropertyValue('--drum-radius')) || 260;
   const clamp = (n, m) => ((n % m) + m) % m;
   const easeOutCubic = t => 1 - Math.pow(1 - t, 3);
+  const tabOf = (f) => ACTIVE[f % N];
 
-  /* ---------- 3D-шестерня с зубьями (фоновый барабан) ---------- */
+  /* ---------- уголковая шестерёнка ---------- */
   function buildGear(){
-    const teeth = 30;
-    const Rr  = 100;   // радиус по впадинам (svg-единицы)
-    const Rt  = 118;   // радиус по вершинам зубьев
-    const hub = 24;
-    const tw  = 7;     // толщина зуба (по дуге у корня)
+    const teeth = 18;
+    const Rr  = 100, Rt = 120, hub = 24, tw = 9;
     let s = [];
     s.push(`<svg viewBox="-130 -130 260 260" preserveAspectRatio="xMidYMid meet">`);
-    s.push(`<g fill="none" stroke="#161413" stroke-width="2" stroke-linejoin="round">`);
-    // зубья
+    s.push(`<g fill="none" stroke="#161413" stroke-width="2.2" stroke-linejoin="round">`);
     for (let i=0;i<teeth;i++){
       const a = i*(360/teeth);
-      s.push(`<rect x="${Rr-1.5}" y="${-tw/2}" width="${Rt-Rr+3}" height="${tw}" transform="rotate(${a})" stroke-width="1.8"/>`);
+      s.push(`<rect x="${Rr-1.5}" y="${-tw/2}" width="${Rt-Rr+3}" height="${tw}" transform="rotate(${a})" stroke-width="2"/>`);
     }
-    // внешнее кольцо (по впадинам)
-    s.push(`<circle cx="0" cy="0" r="${Rr}" stroke-width="2"/>`);
-    // внутреннее кольцо
-    s.push(`<circle cx="0" cy="0" r="${Rr-14}" stroke-width="1.4"/>`);
+    s.push(`<circle cx="0" cy="0" r="${Rr}" stroke-width="2.2"/>`);
+    s.push(`<circle cx="0" cy="0" r="${Rr-16}" stroke-width="1.4"/>`);
     // спицы
-    const spokes = 6;
-    for (let i=0;i<spokes;i++){
-      const a = i*(360/spokes);
-      const x1 = (hub+2)*Math.cos(a*Math.PI/180);
-      const y1 = (hub+2)*Math.sin(a*Math.PI/180);
-      const x2 = (Rr-16)*Math.cos(a*Math.PI/180);
-      const y2 = (Rr-16)*Math.sin(a*Math.PI/180);
-      s.push(`<line x1="${x1.toFixed(1)}" y1="${y1.toFixed(1)}" x2="${x2.toFixed(1)}" y2="${y2.toFixed(1)}" stroke-width="1.6"/>`);
+    for (let i=0;i<6;i++){
+      const a = i*60*Math.PI/180;
+      const x1=(hub+2)*Math.cos(a), y1=(hub+2)*Math.sin(a);
+      const x2=(Rr-18)*Math.cos(a), y2=(Rr-18)*Math.sin(a);
+      s.push(`<line x1="${x1.toFixed(1)}" y1="${y1.toFixed(1)}" x2="${x2.toFixed(1)}" y2="${y2.toFixed(1)}" stroke-width="1.8"/>`);
     }
-    // ступица
-    s.push(`<circle cx="0" cy="0" r="${hub}" stroke-width="2"/>`);
-    s.push(`<circle cx="0" cy="0" r="${hub-6}" stroke-width="1.2"/>`);
-    // центральная метка-крест
-    s.push(`<line x1="-7" y1="0" x2="7" y2="0" stroke-width="1.4"/>`);
-    s.push(`<line x1="0" y1="-7" x2="0" y2="7" stroke-width="1.4"/>`);
+    s.push(`<circle cx="0" cy="0" r="${hub}" stroke-width="2.2"/>`);
+    s.push(`<circle cx="0" cy="0" r="${hub-7}" stroke-width="1.2"/>`);
+    s.push(`<line x1="-8" y1="0" x2="8" y2="0" stroke-width="1.6"/>`);
+    s.push(`<line x1="0" y1="-8" x2="0" y2="8" stroke-width="1.6"/>`);
     s.push(`</g></svg>`);
     gearEl.innerHTML = s.join("");
   }
 
-  /* ---------- построение карточек ---------- */
+  /* бесконечный ход шестерёнки: холостой + вклад от скролла барабана */
+  let cogAngle = 0;
+  function cogTick(){
+    cogAngle += 0.12;
+    const scrollPart = displayAngle * 1.4;
+    if (gearEl) gearEl.style.transform = `rotate(${(cogAngle + scrollPart).toFixed(2)}deg)`;
+    requestAnimationFrame(cogTick);
+  }
+
+  /* ---------- построение граней цилиндра ---------- */
   function build(){
     buildGear();
     drum.innerHTML = "";
-    cards = [];
-    ACTIVE.forEach((tab, i) => {
-      const a = i * STEP;
-      const card = document.createElement('div');
-      card.className = 'drum-card';
-      card.dataset.index = i;
-      card.innerHTML = `
+    facets = [];
+    for (let i = 0; i < FACETS; i++){
+      const tab = tabOf(i);
+      const facet = document.createElement('div');
+      facet.className = 'drum-card';
+      facet.dataset.index = i;
+      facet.innerHTML = `
         <div class="face">
           <div class="ico">${tab.icon}</div>
           <div class="label">${tab.label}</div>
-          <div class="num">0${i+1} / 0${N}</div>
+          <div class="num">0${(i % N)+1} / 0${N}</div>
         </div>`;
-      card.addEventListener('click', () => {
-        if (i === current){
+      const idx = i;
+      facet.addEventListener('click', () => {
+        if (idx === current){
           content.scrollIntoView({ behavior:'smooth', block:'start' });
           return;
         }
-        goTo(i);
+        goTo(idx);
       });
-      drum.appendChild(card);
-      cards.push(card);
-    });
-    layoutCards();
+      drum.appendChild(facet);
+      facets.push(facet);
+    }
+    layoutFacets();
   }
 
-  /* позиция карточек на окружности (статично; меняется только при ресайзе) */
-  function layoutCards(){
+  /* расстановка граней по окружности (статично) */
+  function layoutFacets(){
     const r = radius();
-    cards.forEach((c, i) => {
-      const a = i * STEP;
-      c.style.transform = `rotateY(${a}deg) translateZ(${r}px)`;
+    facets.forEach((c, i) => {
+      c.style.transform = `rotateY(${i * FSTEP}deg) translateZ(${r}px)`;
     });
     renderAngle(displayAngle);
   }
 
-  /* ---------- отрисовка угла (билборд: лицо всегда к камере) ---------- */
+  /* ---------- отрисовка угла ---------- */
   function renderAngle(ang){
     drum.style.transform = `rotateX(-6deg) rotateY(${ang}deg)`;
-    // 3D-шестерня: наклонена, крутится в плоскости синхронно с барабаном
-    if (gearEl){
-      gearEl.style.transform =
-        `translate(-50%,-50%) translateZ(-280px) rotateX(26deg) rotateZ(${(-ang*1.2).toFixed(2)}deg)`;
-    }
-    for (let i = 0; i < cards.length; i++){
-      const a = i * STEP;
-      const face = cards[i].querySelector('.face');
-      // компенсируем и поворот карточки, и поворот барабана
-      face.style.transform = `rotateY(${-(ang + a)}deg)`;
-      cards[i].classList.toggle('is-center', i === current);
+    for (let i = 0; i < facets.length; i++){
+      facets[i].classList.toggle('is-center', i === current);
     }
   }
 
   /* ---------- tween ---------- */
-  function startTween(from, to, dur, onDone){
-    tween = { from, to, start: performance.now(), dur: dur||DURATION, onDone };
+  function startTween(from, to, dur){
+    tween = { from, to, start: performance.now(), dur: dur||DURATION };
     requestAnimationFrame(tick);
   }
   function tick(now){
@@ -144,35 +136,26 @@
     const e = easeOutCubic(t);
     displayAngle = tween.from + (tween.to - tween.from) * e;
     renderAngle(displayAngle);
-    if (t < 1){
-      requestAnimationFrame(tick);
-    } else {
-      const cb = tween.onDone;
-      displayAngle = tween.to;
-      renderAngle(displayAngle);
-      tween = null;
-      if (cb) cb();
-    }
+    if (t < 1) requestAnimationFrame(tick);
+    else { displayAngle = tween.to; renderAngle(displayAngle); tween = null; }
   }
 
   /* ---------- навигация ---------- */
   function nav(dir){
-    current = clamp(current + dir, N);
-    targetAngle = displayAngle - dir * STEP;   // dir=+1 => барабан крутится вправо
-    sub.textContent = ACTIVE[current].subtitle;
-    renderContent(ACTIVE[current]);
-    startTween(displayAngle, targetAngle, DURATION, null);
+    current = clamp(current + dir, FACETS);
+    targetAngle = displayAngle - dir * FSTEP;
+    const tab = tabOf(current);
+    sub.textContent = tab.subtitle;
+    renderContent(tab);
+    startTween(displayAngle, targetAngle, DURATION);
   }
-
-  // переход к конкретной вкладке кратчайшим путём
   function goTo(target){
     if (target === current) return;
-    const diff = ((target - current) + N) % N;
-    const dir = (diff <= N / 2) ? diff : (diff - N);
+    const diff = ((target - current) + FACETS) % FACETS;
+    const dir = (diff <= FACETS / 2) ? diff : (diff - FACETS);
     if (dir === 0) return;
     nav(dir);
   }
-
   const next = () => nav(+1);
   const prev = () => nav(-1);
 
@@ -246,8 +229,7 @@
   /* ---------- ввод: тач-свайп ---------- */
   let touchX = null, touchY = null;
   scene.addEventListener('touchstart', (e) => {
-    touchX = e.touches[0].clientX;
-    touchY = e.touches[0].clientY;
+    touchX = e.touches[0].clientX; touchY = e.touches[0].clientY;
   }, { passive:true });
   scene.addEventListener('touchend', (e) => {
     if (touchX == null) return;
@@ -277,14 +259,15 @@
   let rT;
   window.addEventListener('resize', () => {
     clearTimeout(rT);
-    rT = setTimeout(() => { layoutCards(); }, 150);
+    rT = setTimeout(() => { layoutFacets(); }, 150);
   });
 
   /* ---------- старт ---------- */
   build();
-  sub.textContent = ACTIVE[current].subtitle;
-  renderContent(ACTIVE[current]);
+  sub.textContent = tabOf(current).subtitle;
+  renderContent(tabOf(current));
   renderAngle(0);
+  requestAnimationFrame(cogTick);
 
   window.DRUM = { next, prev, goTo, current: () => current };
 })();
