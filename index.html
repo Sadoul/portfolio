@@ -9,14 +9,13 @@
 
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Caveat:wght@400;700&family=Patrick+Hand&family=Kalam:wght@400;700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Anonymous+Pro:ital,wght@0,400;0,700;1,400&family=Space+Grotesk:wght@500;700&display=swap" rel="stylesheet">
 
 <link rel="stylesheet" href="css/style.css" />
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ctext y='26' font-size='26'%3E%E2%9C%8F%EF%B8%8F%3C/text%3E%3C/svg%3E" />
 </head>
 <body>
 
-<!-- Sketch filters -->
 <svg class="filters" aria-hidden="true">
   <defs>
     <filter id="rough">
@@ -30,16 +29,10 @@
   </defs>
 </svg>
 
-<!-- Декоративная боковая шестерёнка (половина за краем экрана, крутится при скролле) -->
-<div class="side-gear" id="drumGear" aria-hidden="true"></div>
-
 <header class="topbar">
   <div class="brand">
     <img class="avatar" src="assets/web/me.webp" alt="аватар" width="44" height="44" />
-    <div class="logo">
-      <span class="logo-mark">✎</span>
-      <span class="logo-text">портфолио<span class="dot">.</span></span>
-    </div>
+    <div class="logo">портфолио.</div>
   </div>
 
   <div class="lang" id="langSwitch" role="group" aria-label="Язык / Language">
@@ -48,8 +41,7 @@
         <rect width="60" height="40" fill="#fff"/>
         <rect y="13.33" width="60" height="13.34" fill="#0039A6"/>
         <rect y="26.67" width="60" height="13.33" fill="#D52B1E"/>
-      </svg>
-      <span>RU</span>
+      </svg><span>RU</span>
     </button>
     <button class="lang-btn" data-lang="en" aria-pressed="false" title="English">
       <svg class="flag" viewBox="0 0 60 40" aria-hidden="true">
@@ -60,13 +52,20 @@
         <rect y="11" width="60" height="18" fill="#fff"/>
         <rect x="25" width="10" height="40" fill="#C8102E"/>
         <rect y="14" width="60" height="12" fill="#C8102E"/>
-      </svg>
-      <span>EN</span>
+      </svg><span>EN</span>
     </button>
   </div>
 </header>
 
 <main class="stage">
+
+  <!-- ГЕРОЙ-БАРАБАН: прямозубая шестерня 3/4, крутится (слабо холостым, сильно при скролле) -->
+  <section class="hero" aria-label="Барабан-навигация">
+    <div class="hero-gear" id="drumGear" aria-hidden="true"></div>
+    <div class="hero-pointer" aria-hidden="true">
+      <svg viewBox="0 0 40 30"><path d="M20 28 L10 4 H30 Z" class="ink-stroke"/></svg>
+    </div>
+  </section>
 
   <nav class="tabs" id="tabs" aria-label="Разделы">
     <button class="tab-arrow" id="arrowLeft" aria-label="Назад">
@@ -86,6 +85,12 @@
 
 <footer class="footer">
   <span class="footer-line"></span>
+  <button type="button" class="btn-start" id="startBtn">
+    <span class="btn-start__inner">
+      <span class="t">начать</span>
+      <span class="t">начать</span>
+    </span>
+  </button>
   <a class="footer-tg" href="https://t.me/Nichtojestv0" target="_blank" rel="noopener">TG — @Nichtojestv0</a>
 </footer>
 

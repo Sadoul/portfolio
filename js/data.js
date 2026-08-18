@@ -64,7 +64,7 @@ const TABS = [
     label:{ru:'Minecraft', en:'Minecraft'},
     subtitle:{ru:'Minecraft · плагины и сборки', en:'Minecraft · plugins & packs'} },
   { id:'game', icon:ICONS.game, active:true,
-    label:{ru:'Gamedev', en:'Game Dev'},
+    label:{ru:'Game Dev', en:'Game Dev'},
     subtitle:{ru:'Game Development · движки и игры', en:'Game Development · engines & games'} },
   { id:'bio',  icon:ICONS.bio,  active:true,
     label:{ru:'Биография', en:'About'},
