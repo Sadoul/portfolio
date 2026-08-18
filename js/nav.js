@@ -1,7 +1,9 @@
 /* =========================================================
-   Навигация по табам + i18n + ГЕРОЙ-БАРАБАН (прямозубая
-   шестерня 3/4, штриховка зубьев). Вращение: слабый холостой
-   ход + сильная прокрутка при скролле.
+   Навигация по табам + i18n + ГЕРОЙ-БАРАБАН.
+   Барабан = 3D-цилиндр в ракурсе 3/4: верхний овал (чистая
+   плоскость) + боковая стенка вниз + вертикальные зубья-блоки
+   с горизонтальной штриховкой (фактура металла).
+   Вращение: слабый холостой ход + сильно при скролле.
    ========================================================= */
 (function(){
   "use strict";
@@ -18,7 +20,6 @@
   const arrowR  = document.getElementById('arrowRight');
   const gearEl  = document.getElementById('drumGear');
   const langSw  = document.getElementById('langSwitch');
-  const startBtn= document.getElementById('startBtn');
 
   let lang = 'ru';
   let current = 0;
@@ -28,68 +29,83 @@
   const clamp = (n, m) => ((n % m) + m) % m;
 
   /* =========================================================
-     ПРЯМОЗУБАЯ ШЕСТЕРНЯ (thin disk 3/4, dense teeth, hatched)
+     3D-ЦИЛИНДР-ШЕСТЕРНЯ
      ========================================================= */
-  const G = {
-    VB:[0,0,360,240], cx:180, cy:120,
-    RR:108, RT:128, tY:0.34,   // радиусы + вертикаль. сжатие (тонкий диск)
-    teeth:42, hub:20,
-  };
-  function gearGeom(){ G.RRY = G.RR*G.tY; G.RTY = G.RT*G.tY; return G; }
+  const G = { VB:[0,0,360,270], cx:180, cyTop:118, R:112, tilt:0.30, H:30, teeth:44, hub:20 };
+  const ry = () => G.R * G.tilt;
+
+  // точки на верхнем/нижнем эллипсе под углом th (th=0 => фронт, низ эллипса)
+  const Ptop = (th) => [G.cx + G.R*Math.sin(th), G.cyTop + ry()*Math.cos(th)];
+  const Pbot = (th) => [G.cx + G.R*Math.sin(th), G.cyTop + G.H + ry()*Math.cos(th)];
+
+  function arcPath(Rr, cy, from, to, steps){
+    let d = "";
+    for (let k=0; k<=steps; k++){
+      const th = from + (to-from)*k/steps;
+      d += (k===0?"M":" L") + (G.cx + Rr*Math.sin(th)).toFixed(1) + " " + (cy + ry()*Math.cos(th)).toFixed(1);
+    }
+    return d;
+  }
 
   function renderGear(rotDeg){
-    const g = gearGeom();
     const rot = rotDeg * Math.PI/180;
-    const step = 2*Math.PI / g.teeth;
-    const hw = step*0.33;
-    const P = (ang,R,Ry) => [g.cx + R*Math.cos(ang), g.cy + Ry*Math.sin(ang)];
-
+    const step = 2*Math.PI / G.teeth;
+    const hw = step * 0.33;
+    const cyBot = G.cyTop + G.H;
     let s = [];
-    s.push(`<svg viewBox="${g.VB.join(' ')}">`);
+
+    s.push(`<svg viewBox="${G.VB.join(' ')}">`);
     s.push(`<defs>
       <pattern id="gh" width="5" height="3" patternUnits="userSpaceOnUse">
         <rect width="5" height="3" fill="none"/>
         <line x1="0" y1="1.5" x2="5" y2="1.5" stroke="#161413" stroke-width="0.7"/>
       </pattern></defs>`);
-    s.push(`<g fill="none" stroke="#161413" stroke-width="2" stroke-linejoin="round" stroke-linecap="round">`);
+    s.push(`<g fill="none" stroke="#161413" stroke-linejoin="round" stroke-linecap="round">`);
 
-    // верхняя плоскость (чистая): внешняя окружность по впадинам
-    s.push(`<ellipse cx="${g.cx}" cy="${g.cy}" rx="${g.RR}" ry="${g.RRY}" stroke-width="2"/>`);
-    s.push(`<ellipse cx="${g.cx}" cy="${g.cy}" rx="${g.RR-14}" ry="${(g.RR-14)*g.tY}" stroke-width="1.2"/>`);
-    // осевые штрихпунктирные линии
-    s.push(`<line x1="${g.cx-g.RR}" y1="${g.cy}" x2="${g.cx+g.RR}" y2="${g.cy}" stroke-width="1.2" stroke-dasharray="9 3 2 3"/>`);
-    s.push(`<line x1="${g.cx}" y1="${g.cy-g.RRY}" x2="${g.cx}" y2="${g.cy+g.RRY}" stroke-width="1.2" stroke-dasharray="9 3 2 3"/>`);
+    // 1) боковая стенка цилиндра (передняя половина): фронт-дуга верхняя -> вниз -> фронт-дуга нижняя
+    let band = arcPath(G.R, G.cyTop, -Math.PI/2, Math.PI/2, 30);          // верхняя фронт-дуга
+    band += " L" + Pbot(Math.PI/2).map(v=>v.toFixed(1)).join(" ");         // вниз справа
+    band += arcPath(G.R, cyBot, Math.PI/2, -Math.PI/2, 30).replace("M"," L"); // нижняя фронт-дуга назад
+    band += " Z";
+    s.push(`<path d="${band}" fill="#efe9db" stroke="#161413" stroke-width="2"/>`);
 
-    // зубья: только передняя половина (sin>0) — задние скрыты диском
-    for (let i=0;i<g.teeth;i++){
-      const phi = i*step + rot;
-      if (Math.sin(phi) <= 0.06) continue;
-      const [rlx,rly] = P(phi-hw, g.RR, g.RRY);
-      const [rrx,rry] = P(phi+hw, g.RR, g.RRY);
-      const [trx,trty]= P(phi+hw, g.RT, g.RTY);
-      const [tlx,tly] = P(phi-hw, g.RT, g.RTY);
-      s.push(`<polygon points="${rlx.toFixed(1)},${rly.toFixed(1)} ${rrx.toFixed(1)},${rry.toFixed(1)} ${trx.toFixed(1)},${trty.toFixed(1)} ${tlx.toFixed(1)},${tly.toFixed(1)}" fill="url(#gh)" stroke="#161413" stroke-width="1.6"/>`);
+    // 2) зубья-блоки на боковой стенке (только передняя половина cos(th)>0)
+    for (let i=0;i<G.teeth;i++){
+      const th = i*step + rot;
+      if (Math.cos(th) <= 0.10) continue;           // боковые/задние скрыты
+      const [tlx,tly] = Ptop(th-hw);
+      const [trx,trty]= Ptop(th+hw);
+      const [brx,bry] = Pbot(th+hw);
+      const [blx,bly] = Pbot(th-hw);
+      s.push(`<polygon points="${tlx.toFixed(1)},${tly.toFixed(1)} ${trx.toFixed(1)},${trty.toFixed(1)} ${brx.toFixed(1)},${bry.toFixed(1)} ${blx.toFixed(1)},${bly.toFixed(1)}" fill="url(#gh)" stroke="#161413" stroke-width="1.5"/>`);
     }
 
-    // ступица (на верхней плоскости)
-    s.push(`<ellipse cx="${g.cx}" cy="${g.cy}" rx="${g.hub}" ry="${g.hub*g.tY}" stroke-width="2"/>`);
-    s.push(`<circle cx="${g.cx}" cy="${g.cy}" r="4" fill="#161413" stroke="none"/>`);
+    // 3) верхняя плоскость (чистая): внешний овал, внутреннее кольцо, осевые линии, ступица
+    s.push(`<ellipse cx="${G.cx}" cy="${G.cyTop}" rx="${G.R}" ry="${ry()}" fill="#f6f2e9" stroke="#161413" stroke-width="2"/>`);
+    s.push(`<ellipse cx="${G.cx}" cy="${G.cyTop}" rx="${G.R-15}" ry="${(G.R-15)*G.tilt}" stroke-width="1.2"/>`);
+    s.push(`<line x1="${G.cx-G.R}" y1="${G.cyTop}" x2="${G.cx+G.R}" y2="${G.cyTop}" stroke-width="1.2" stroke-dasharray="9 3 2 3"/>`);
+    s.push(`<line x1="${G.cx}" y1="${G.cyTop-ry()}" x2="${G.cx}" y2="${G.cyTop+ry()}" stroke-width="1.2" stroke-dasharray="9 3 2 3"/>`);
+    s.push(`<ellipse cx="${G.cx}" cy="${G.cyTop}" rx="${G.hub}" ry="${G.hub*G.tilt}" fill="#f6f2e9" stroke="#161413" stroke-width="2"/>`);
+    s.push(`<circle cx="${G.cx}" cy="${G.cyTop}" r="4" fill="#161413" stroke="none"/>`);
     s.push(`</g></svg>`);
     gearEl.innerHTML = s.join("");
   }
 
-  /* вращение: слабый холостой ход + сильная прокрутка при скролле */
   let gearAngle = 0, gearVel = 0;
   function gearTick(){
-    gearAngle += 0.22 + gearVel;   // холостой ход + инерция от скролла
+    gearAngle += 0.20 + gearVel;   // слабый холостой ход + инерция от скролла
     gearVel *= 0.9;
     renderGear(gearAngle);
     requestAnimationFrame(gearTick);
   }
 
   /* =========================================================
-     Табы (без иконок)
+     Табы (двойной span -> слайд-анимация как у кнопки «начать»)
      ========================================================= */
+  function tabHTML(label){
+    const t = esc(label);
+    return `<span class="t">${t}</span><span class="t">${t}</span>`;
+  }
   function buildTabs(){
     strip.innerHTML = "";
     tabButtons = [];
@@ -97,7 +113,7 @@
       const b = document.createElement('button');
       b.className = 'tab';
       b.dataset.index = i;
-      b.textContent = L(tab.label);
+      b.innerHTML = tabHTML(L(tab.label));
       b.addEventListener('click', () => goTo(i));
       strip.appendChild(b);
       tabButtons.push(b);
@@ -138,7 +154,6 @@
     content.innerHTML = head + `<div class="grid">${items.map(renderCard).join('')}</div>`;
   }
 
-  /* биография (без стикера «это я») */
   function renderBio(){
     const facts = BIO.facts.map(f => `<li>${esc(L(f))}</li>`).join('');
     const stacks = BIO.stacks.map(grp => `<div class="bio-stack"><h4>${esc(L(grp.cat))}</h4><div class="bio-chips">${grp.items.map(it=>`<span class="bio-chip">${esc(it)}</span>`).join('')}</div></div>`).join('');
@@ -159,7 +174,7 @@
     if (i === current) return;
     current = clamp(i, N);
     applyTabs(); renderContent();
-    gearVel += current >= 0 ? 8 : -8;   // лёгкий импульс шестерне при смене
+    gearVel += 6;
   }
   const next = () => goTo((current+1)%N);
   const prev = () => goTo((current-1+N)%N);
@@ -168,11 +183,11 @@
     lang = l;
     document.documentElement.lang = l;
     langSw.querySelectorAll('.lang-btn').forEach(b => b.setAttribute('aria-pressed', b.dataset.lang === l ? 'true':'false'));
-    tabButtons.forEach((b,i)=> b.textContent = L(ACTIVE[i].label));
+    tabButtons.forEach((b,i)=> b.innerHTML = tabHTML(L(ACTIVE[i].label)));
     applyTabs(); renderContent();
   }
 
-  /* ввод: колесо над табами => навигация; в любом месте => крутит барабан */
+  /* ввод */
   let wheelLock = false;
   tabsEl.addEventListener('wheel', (e) => {
     if (Math.abs(e.deltaY) < 6) return;
@@ -184,7 +199,7 @@
   }, { passive:false });
 
   window.addEventListener('wheel', (e) => {
-    gearVel += (e.deltaY>0?1:-1) * Math.min(Math.abs(e.deltaY)/30, 6); // сильно при скролле
+    gearVel += (e.deltaY>0?1:-1) * Math.min(Math.abs(e.deltaY)/30, 6);
   }, { passive:true });
 
   window.addEventListener('keydown', (e) => {
@@ -194,10 +209,8 @@
   arrowL.addEventListener('click', prev);
   arrowR.addEventListener('click', next);
   langSw.querySelectorAll('.lang-btn').forEach(b => b.addEventListener('click', () => setLang(b.dataset.lang)));
-  if (startBtn) startBtn.addEventListener('click', () => window.scrollTo({top:0, behavior:'smooth'}));
 
   /* старт */
-  gearGeom();
   buildTabs();
   setLang('ru');
   requestAnimationFrame(gearTick);
