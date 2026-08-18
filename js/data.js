@@ -105,6 +105,9 @@ const PROJECTS = {
       desc:{ru:'Мини-игра в сервере.', en:'Server minigame.'}, type:'placeholder', src:null, link:null },
   ],
   game: [
+    { title:{ru:'RPWorld', en:'RPWorld'},
+      desc:{ru:'Игра на C++ с собственным движком. Подробнее — на отдельной странице.', en:'A C++ game with a custom engine. See the dedicated page.'},
+      type:'placeholder', src:null, link:'https://sadoul.github.io/rpworld' },
     { title:{ru:'2D-платформер', en:'2D platformer'},
       desc:{ru:'Свой движок.', en:'Custom engine.'}, type:'placeholder', src:null, link:null },
     { title:{ru:'3D-песочница', en:'3D sandbox'},
@@ -121,26 +124,26 @@ const PROJECTS = {
 };
 
 const BIO = {
-  name: { ru:'Ничто', en:'Nichto' },            // замените на своё имя
+  name: { ru:'Sadoul', en:'Sadoul' },
   handle: '@Nichtojestv0',
   photo: 'assets/web/me.webp',
   facts: [
     { ru:'18 лет', en:'18 years old' },
     { ru:'Живу в Днепре', en:'Based in Dnipro' },
-    { ru:'Принимаю к оплате: ₽ рубли, € евро, криптовалюту', en:'Accept payment: ₽ rubles, € euros, crypto' },
+    { ru:'Принимаю к оплате: рубли, евро, криптовалюту', en:'Accept payment: rubles, euros, crypto' },
     { ru:'Делаю Minecraft-моды и плагины с 12 лет', en:'Building Minecraft mods & plugins since age 12' },
     { ru:'50 Minecraft-проектов', en:'50 Minecraft projects shipped' },
     { ru:'Более 10 веб-сайтов', en:'10+ websites built' },
-    { ru:'Профессионал в бэкенде', en:'Backend professional' },
-    { ru:'Шарю за C++, сейчас пишу свою игру', en:'Strong C++; currently writing my own game' },
-    { ru:'В будущем хочу стать системным программистом', en:'Future goal: become a systems programmer' },
+    { ru:'Бэкенд: архитектура и серверная логика', en:'Backend: architecture & server-side logic' },
+    { ru:'Пишу игру на C++ — собственный движок с нуля', en:'Writing a game in C++ — custom engine from scratch' },
+    { ru:'Иду в системное программирование: изучаю Rust, Zig, Odin', en:'Heading into systems programming: studying Rust, Zig, Odin' },
   ],
   stacks: [
-    { cat:{ru:'Бэкенд',en:'Backend'}, items:['Node.js','Python · FastAPI','Go','PostgreSQL','Redis','Docker','REST / GraphQL'] },
-    { cat:{ru:'Фронтенд',en:'Frontend'}, items:['TypeScript','React','HTML / CSS'] },
-    { cat:{ru:'Minecraft',en:'Minecraft'}, items:['Java','Spigot / Paper','Bukkit API'] },
-    { cat:{ru:'Game Dev',en:'Game Dev'}, items:['C++','CMake','OpenGL','SDL2','свой движок / own engine'] },
-    { cat:{ru:'Системы / low-level',en:'Systems / low-level'}, items:['C','C++','Rust (учу / learning)','Linux','POSIX'] },
+    { cat:{ru:'Языки',en:'Languages'}, items:['Java','Kotlin','C++','C#','Rust','Zig','Odin'] },
+    { cat:{ru:'Бэкенд и веб',en:'Backend & web'}, items:['Node.js','PostgreSQL','Redis','Docker','REST / GraphQL','TypeScript','React'] },
+    { cat:{ru:'Minecraft',en:'Minecraft'}, items:['Spigot / Paper','Bukkit API','Java'] },
+    { cat:{ru:'Game Dev',en:'Game Dev'}, items:['C++','CMake','OpenGL','SDL2','собственный движок / own engine'] },
+    { cat:{ru:'Системы / low-level',en:'Systems / low-level'}, items:['Rust','Zig','Odin','C','Linux','POSIX'] },
   ],
 };
 
