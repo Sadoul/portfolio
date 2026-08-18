@@ -1,0 +1,398 @@
+/* =========================================================
+   Портфолио · чёрно-белый скетч-стиль
+   ========================================================= */
+
+:root{
+  --ink:#161413;
+  --ink-soft:#3a3633;
+  --muted:#8c8780;
+  --muted-2:#b8b3a9;
+  --paper:#f6f2e9;
+  --paper-2:#efe9db;
+  --line:var(--ink);
+  --radius:18px;
+  --stroke:2px;
+
+  --drum-radius:230px;     /* радиус барабана (рабочий стол) */
+  --drum-step:120deg;     /* шаг между вкладками (3 активные) */
+  --drum-w:260px;          /* ширина карточки вкладки */
+  --drum-h:340px;          /* высота карточки вкладки */
+}
+
+@media (max-width: 720px){
+  :root{
+    --drum-radius:150px;
+    --drum-w:190px;
+    --drum-h:250px;
+  }
+}
+
+*{ box-sizing:border-box; }
+html,body{ margin:0; padding:0; }
+
+html{ scroll-behavior:smooth; }
+
+body{
+  font-family:"Patrick Hand", "Kalam", system-ui, sans-serif;
+  color:var(--ink);
+  background:var(--paper);
+  background-image:
+    radial-gradient(circle at 18% 12%, rgba(0,0,0,.035) 0 1px, transparent 2px),
+    radial-gradient(circle at 82% 28%, rgba(0,0,0,.03) 0 1px, transparent 2px),
+    radial-gradient(circle at 42% 70%, rgba(0,0,0,.025) 0 1px, transparent 2px),
+    radial-gradient(circle at 70% 90%, rgba(0,0,0,.03) 0 1px, transparent 2px);
+  background-size: 220px 220px, 260px 260px, 180px 180px, 300px 300px;
+  min-height:100vh;
+  overflow-x:hidden;
+  -webkit-font-smoothing:antialiased;
+}
+
+/* спрятанные svg-фильтры */
+.filters{ position:absolute; width:0; height:0; pointer-events:none; }
+
+/* инк-штриховка для теней */
+.hatch{
+  background-image: repeating-linear-gradient(
+    135deg,
+    var(--ink) 0 1px,
+    transparent 1px 5px
+  );
+}
+
+/* =========================================================
+   Topbar
+   ========================================================= */
+.topbar{
+  display:flex; align-items:center; justify-content:space-between;
+  padding:22px 34px 8px;
+  position:relative; z-index:5;
+}
+.logo{ display:flex; align-items:baseline; gap:8px; }
+.logo-mark{ font-size:24px; transform:translateY(2px); }
+.logo-text{
+  font-family:"Caveat", cursive; font-weight:700;
+  font-size:30px; letter-spacing:.5px;
+}
+.logo-text .dot{ color:var(--ink); }
+.hint{ font-size:15px; color:var(--muted); }
+.hint-key{
+  border:1.5px solid var(--ink);
+  border-radius:7px; padding:1px 7px;
+  background:var(--paper-2);
+}
+
+@media (max-width:560px){
+  .topbar{ padding:16px 18px 4px; }
+  .hint{ display:none; }
+}
+
+/* =========================================================
+   Stage / layout
+   ========================================================= */
+.stage{
+  max-width:1180px;
+  margin:0 auto;
+  padding:18px 22px 80px;
+}
+
+/* =========================================================
+   3D DRUM
+   ========================================================= */
+.drum-wrap{
+  position:relative;
+  display:flex; align-items:center; justify-content:center;
+  gap:6px;
+  margin:8px auto 4px;
+  padding:30px 0 10px;
+}
+
+.drum-scene{
+  position:relative;
+  width:calc(var(--drum-w) * 2.6);
+  max-width:92vw;
+  height:calc(var(--drum-h) + 40px);
+  perspective:2000px;
+  perspective-origin:50% 42%;
+  display:flex; align-items:center; justify-content:center;
+  touch-action:pan-y; /* вертикальный скролл страницы, горизонталь — наш */
+}
+
+/* ось барабана */
+.drum-axle{
+  position:absolute;
+  top:50%; left:50%;
+  width:calc(var(--drum-radius)*2 + var(--drum-w));
+  height:6px;
+  transform:translate(-50%,-50%);
+  background:
+    repeating-linear-gradient(90deg, var(--ink) 0 6px, transparent 6px 12px);
+  opacity:.18;
+  border-radius:3px;
+  pointer-events:none;
+}
+
+.drum{
+  position:relative;
+  width:var(--drum-w);
+  height:var(--drum-h);
+  transform-style:preserve-3d;
+  transform: rotateX(-6deg) rotateY(0deg);
+  will-change:transform;
+}
+.drum.no-trans{ transition:none; }
+
+/* карточка вкладки на барабане */
+.drum-card{
+  position:absolute;
+  inset:0;
+  transform-style:preserve-3d;
+  cursor:pointer;
+  user-select:none;
+  backface-visibility:visible;
+}
+.drum-card .face{
+  position:absolute; inset:0;
+  display:flex; flex-direction:column;
+  align-items:center; justify-content:center;
+  gap:10px;
+  border:var(--stroke) solid var(--ink);
+  border-radius:var(--radius);
+  background:var(--paper);
+  box-shadow: 4px 6px 0 rgba(22,20,19,.18);
+  /* лёгкая "бумажная" текстура */
+  background-image:
+    radial-gradient(circle at 30% 18%, rgba(0,0,0,.04) 0 1px, transparent 2px),
+    radial-gradient(circle at 70% 80%, rgba(0,0,0,.035) 0 1px, transparent 2px);
+  background-size: 120px 120px;
+}
+.drum-card .face::after{
+  /* внутренняя тонкая рамка — «нарисовано от руки» */
+  content:"";
+  position:absolute; inset:7px;
+  border:1.4px solid var(--ink);
+  border-radius:calc(var(--radius) - 4px);
+  opacity:.55;
+  pointer-events:none;
+}
+.drum-card .ico{ width:84px; height:84px; }
+.drum-card .label{
+  font-family:"Caveat", cursive; font-weight:700;
+  font-size:34px; line-height:1; white-space:nowrap;
+}
+.drum-card .num{
+  font-size:13px; color:var(--muted);
+  letter-spacing:3px; text-transform:uppercase;
+}
+
+/* соседние (не центральные) карточки затемнены и уменьшены */
+.drum-card:not(.is-center) .face{
+  filter:grayscale(1) brightness(.94);
+  opacity:.62;
+  box-shadow: 2px 3px 0 rgba(22,20,19,.12);
+}
+.drum-card.is-center .face{
+  opacity:1;
+  box-shadow: 7px 9px 0 rgba(22,20,19,.22), 0 0 0 3px var(--paper) , 0 0 0 4.5px var(--ink);
+}
+
+/* рамка-выделитель по центру */
+.drum-frame{
+  position:absolute; top:50%; left:50%;
+  width:calc(var(--drum-w) + 26px);
+  height:calc(var(--drum-h) + 26px);
+  transform:translate(-50%,-50%);
+  pointer-events:none;
+  z-index:3;
+}
+.frame-corner{
+  position:absolute; width:26px; height:26px;
+  border:var(--stroke) solid var(--ink);
+}
+.frame-corner.tl{ top:0; left:0; border-right:0; border-bottom:0; border-top-left-radius:8px; }
+.frame-corner.tr{ top:0; right:0; border-left:0; border-bottom:0; border-top-right-radius:8px; }
+.frame-corner.bl{ bottom:0; left:0; border-right:0; border-top:0; border-bottom-left-radius:8px; }
+.frame-corner.br{ bottom:0; right:0; border-left:0; border-top:0; border-bottom-right-radius:8px; }
+
+/* тень-отражение под барабаном */
+.drum-shadow{
+  position:absolute; bottom:6px; left:50%;
+  width:calc(var(--drum-w) * 1.1); height:18px;
+  transform:translateX(-50%);
+  background:radial-gradient(ellipse at center, rgba(22,20,19,.28) 0%, transparent 70%);
+  border-radius:50%;
+  pointer-events:none;
+  filter:url(#rough);
+}
+
+/* стрелки */
+.drum-arrow{
+  background:var(--paper);
+  border:var(--stroke) solid var(--ink);
+  width:46px; height:46px; border-radius:50%;
+  display:grid; place-items:center;
+  cursor:pointer; flex:0 0 auto;
+  box-shadow:3px 3px 0 rgba(22,20,19,.18);
+  transition: transform .15s ease, box-shadow .15s ease;
+  z-index:6;
+}
+.drum-arrow:hover{ transform:translateY(-1px); box-shadow:4px 4px 0 rgba(22,20,19,.25); }
+.drum-arrow:active{ transform:translate(1px,1px); box-shadow:1px 1px 0 rgba(22,20,19,.2); }
+.drum-arrow svg{ width:22px; height:22px; }
+.ink-stroke{ fill:none; stroke:var(--ink); stroke-width:2.4; stroke-linecap:round; stroke-linejoin:round; }
+
+.drum-sub{
+  text-align:center;
+  font-family:"Caveat", cursive;
+  font-size:26px; color:var(--ink-soft);
+  margin:2px 0 30px;
+}
+
+@media (max-width:720px){
+  .drum-arrow{ width:38px; height:38px; }
+  .drum-arrow svg{ width:18px; height:18px; }
+  .drum-card .ico{ width:58px; height:58px; }
+  .drum-card .label{ font-size:26px; }
+  .drum-sub{ font-size:20px; margin-bottom:22px; }
+}
+
+/* =========================================================
+   Content (projects)
+   ========================================================= */
+.content{ position:relative; }
+
+.content-head{
+  display:flex; align-items:baseline; gap:14px;
+  margin:0 4px 22px;
+  padding-bottom:12px;
+  border-bottom:2px solid var(--ink);
+}
+.content-head h2{
+  margin:0;
+  font-family:"Caveat", cursive; font-weight:700;
+  font-size:46px; line-height:1;
+}
+.content-head .count{
+  font-size:16px; color:var(--muted);
+}
+.content-head .rule{
+  flex:1; height:0; border-bottom:1px dashed var(--muted-2);
+}
+
+.grid{
+  display:grid;
+  grid-template-columns:repeat(3, 1fr);
+  gap:26px;
+}
+@media (max-width: 980px){ .grid{ grid-template-columns:repeat(2,1fr); } }
+@media (max-width: 600px){ .grid{ grid-template-columns:1fr; } }
+
+.card{
+  position:relative;
+  border:var(--stroke) solid var(--ink);
+  border-radius:var(--radius);
+  background:var(--paper);
+  box-shadow:5px 7px 0 rgba(22,20,19,.18);
+  overflow:hidden;
+  transition: transform .25s ease, box-shadow .25s ease;
+}
+.card:hover{
+  transform:translate(-2px,-2px) rotate(-.4deg);
+  box-shadow:8px 10px 0 rgba(22,20,19,.24);
+}
+.card .media{
+  position:relative;
+  aspect-ratio: 16 / 10;
+  background:var(--paper-2);
+  border-bottom:var(--stroke) solid var(--ink);
+  display:grid; place-items:center;
+  overflow:hidden;
+}
+.card .media video,
+.card .media img{
+  width:100%; height:100%; object-fit:cover; display:block;
+  filter:grayscale(1) contrast(1.05);
+}
+.card .media .ph{
+  display:flex; flex-direction:column; align-items:center; gap:8px;
+  color:var(--muted);
+}
+.card .media .ph svg{ width:70px; height:70px; }
+.card .media .ph .ph-tag{
+  font-size:14px; letter-spacing:3px; text-transform:uppercase;
+}
+.card .media .badge{
+  position:absolute; top:10px; left:10px;
+  font-size:13px; letter-spacing:2px; text-transform:uppercase;
+  background:var(--paper);
+  border:1.6px solid var(--ink); border-radius:6px;
+  padding:1px 8px;
+}
+.card .body{ padding:14px 16px 16px; }
+.card .title{
+  font-family:"Caveat", cursive; font-weight:700;
+  font-size:28px; line-height:1.05; margin:0 0 6px;
+}
+.card .desc{ font-size:16px; line-height:1.35; color:var(--ink-soft); margin:0 0 12px; }
+.card .link{
+  display:inline-flex; align-items:center; gap:7px;
+  font-size:15px;
+  border:1.6px solid var(--ink); border-radius:7px;
+  padding:3px 10px; text-decoration:none;
+  background:var(--paper);
+}
+.card .link.live{ color:var(--ink); }
+.card .link.live:hover{ background:var(--ink); color:var(--paper); }
+.card .link.disabled{
+  color:var(--muted-2);
+  border-color:var(--muted-2);
+  border-style:dashed;
+  cursor:not-allowed;
+}
+
+/* тег типа медиа через угловую метку */
+.card .tag-corner{
+  position:absolute; bottom:8px; right:10px;
+  font-size:13px; color:var(--muted);
+  letter-spacing:2px; text-transform:uppercase;
+}
+
+/* =========================================================
+   Footer
+   ========================================================= */
+.footer{
+  max-width:1180px; margin:0 auto;
+  padding:30px 22px 40px;
+  text-align:center;
+}
+.footer-line{
+  display:block; height:0; width:120px; margin:0 auto 14px;
+  border-top:2px solid var(--ink);
+}
+.footer-text{ font-size:15px; color:var(--muted); margin:0; }
+.footer-text .muted{ color:var(--muted-2); }
+
+/* =========================================================
+   Анимации появления карточек
+   ========================================================= */
+@keyframes inkIn{
+  from{ opacity:0; transform:translateY(14px) rotate(-1deg); }
+  to{ opacity:1; transform:translateY(0) rotate(0); }
+}
+.card{ animation: inkIn .5s ease both; }
+.card:nth-child(2){ animation-delay:.05s; }
+.card:nth-child(3){ animation-delay:.1s; }
+.card:nth-child(4){ animation-delay:.15s; }
+.card:nth-child(5){ animation-delay:.2s; }
+.card:nth-child(6){ animation-delay:.25s; }
+
+@keyframes drumIn{
+  from{ opacity:0; }
+  to{ opacity:1; }
+}
+.drum{ animation: drumIn .7s ease both; }
+
+/* уменьшенное motion */
+@media (prefers-reduced-motion: reduce){
+  .drum{ transition:none !important; animation:none !important; }
+  .card{ animation:none !important; }
+}

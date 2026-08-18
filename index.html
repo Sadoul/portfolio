@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<meta name="theme-color" content="#faf8f3" />
+<title>Портфолио · Скетч</title>
+<meta name="description" content="Портфолио: Web, Minecraft, Game Development. Скетч-стиль, чёрно-белый." />
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Caveat:wght@400;700&family=Patrick+Hand&family=Kalam:wght@400;700&display=swap" rel="stylesheet">
+
+<link rel="stylesheet" href="css/style.css" />
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ctext y='26' font-size='26'%3E%E2%9C%8F%EF%B8%8F%3C/text%3E%3C/svg%3E" />
+</head>
+<body>
+
+<!-- Sketch grain / paper overlay -->
+<svg class="filters" aria-hidden="true">
+  <defs>
+    <filter id="rough">
+      <feTurbulence type="turbulence" baseFrequency="0.02 0.03" numOctaves="2" seed="3" result="t"/>
+      <feDisplacementMap in="SourceGraphic" in2="t" scale="2.2" xChannelSelector="R" yChannelSelector="G"/>
+    </filter>
+    <filter id="rough-hard">
+      <feTurbulence type="turbulence" baseFrequency="0.04" numOctaves="2" seed="7" result="t"/>
+      <feDisplacementMap in="SourceGraphic" in2="t" scale="1.4" xChannelSelector="R" yChannelSelector="G"/>
+    </filter>
+  </defs>
+</svg>
+
+<header class="topbar">
+  <div class="logo">
+    <span class="logo-mark">✎</span>
+    <span class="logo-text">портфолио<span class="dot">.</span></span>
+  </div>
+  <nav class="hint" aria-hidden="true">
+    <span class="hint-key">скролл</span> · <span class="hint-key">← →</span> · <span class="hint-key">клик</span>
+  </nav>
+</header>
+
+<main class="stage">
+
+  <!-- ============ 3D DRUM MENU ============ -->
+  <section class="drum-wrap" id="drumWrap" aria-label="Навигация по разделам">
+    <button class="drum-arrow drum-arrow--left" id="arrowLeft" aria-label="Предыдущая вкладка">
+      <svg viewBox="0 0 40 40"><path d="M27 7 L13 20 L27 33" class="ink-stroke"/></svg>
+    </button>
+
+    <div class="drum-scene" id="drumScene">
+      <div class="drum-axle" aria-hidden="true"></div>
+      <div class="drum" id="drum"></div>
+      <!-- center selector frame -->
+      <div class="drum-frame" aria-hidden="true">
+        <span class="frame-corner tl"></span>
+        <span class="frame-corner tr"></span>
+        <span class="frame-corner bl"></span>
+        <span class="frame-corner br"></span>
+      </div>
+      <!-- reflection -->
+      <div class="drum-shadow" aria-hidden="true"></div>
+    </div>
+
+    <button class="drum-arrow drum-arrow--right" id="arrowRight" aria-label="Следующая вкладка">
+      <svg viewBox="0 0 40 40"><path d="M13 7 L27 20 L13 33" class="ink-stroke"/></svg>
+    </button>
+  </section>
+
+  <p class="drum-sub" id="drumSub">—</p>
+
+  <!-- ============ CONTENT ============ -->
+  <section class="content" id="content" aria-live="polite"></section>
+
+</main>
+
+<footer class="footer">
+  <span class="footer-line"></span>
+  <p class="footer-text">сделано вручную · чёрно-белый скетч · <span class="muted">© <span id="year"></span></span></p>
+</footer>
+
+<script src="js/data.js"></script>
+<script src="js/drum.js"></script>
+</body>
+</html>
