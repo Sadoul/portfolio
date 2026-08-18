@@ -250,3 +250,40 @@ body{
 .card:nth-child(4){ animation-delay:.15s; } .card:nth-child(5){ animation-delay:.2s; } .card:nth-child(6){ animation-delay:.25s; }
 
 @media (prefers-reduced-motion: reduce){ .card{ animation:none !important; } }
+
+/* =========================================================
+   Переход-свап при смене языка
+   ========================================================= */
+.swap{
+  position:fixed; inset:0; z-index:50;
+  background:var(--ink); color:var(--paper);
+  display:grid; place-items:center;
+  transform:translateX(100%);
+  pointer-events:none;
+  overflow:hidden;
+}
+.swap::after{
+  content:""; position:absolute; left:0; right:0; bottom:14px;
+  height:1px; background:var(--paper); opacity:.25;
+}
+.swap__text{
+  font-family:var(--font-display); font-weight:700;
+  font-size:clamp(28px, 7vw, 64px); letter-spacing:1px;
+  transform:translateY(6px); opacity:0;
+  white-space:nowrap;
+}
+.swap.run{ animation: swapSweep 760ms cubic-bezier(.7,0,.2,1) forwards; }
+.swap.run .swap__text{ animation: swapText 760ms cubic-bezier(.7,0,.2,1) forwards; }
+@keyframes swapSweep{
+  0%{ transform:translateX(100%); }
+  38%{ transform:translateX(0); }
+  62%{ transform:translateX(0); }
+  100%{ transform:translateX(-100%); }
+}
+@keyframes swapText{
+  0%{ transform:translateY(8px); opacity:0; }
+  40%{ transform:translateY(0); opacity:1; }
+  60%{ transform:translateY(0); opacity:1; }
+  100%{ transform:translateY(-8px); opacity:0; }
+}
+@media (max-width:560px){ .swap__text{ font-size:30px; } }
