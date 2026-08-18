@@ -1,9 +1,11 @@
 /* =========================================================
-   Данные портфолио. Чтобы добавить реальные медиа/ссылки —
-   отредактируйте поля: type, src, link.
-     type:  'video' | 'photo' | 'gif'   (или 'placeholder' для заглушки)
-     src:   путь к файлу в assets/...   (или null для заглушки)
-     link:  URL проекта или null         (null => «Ссылка пока недоступна»)
+   Данные портфолио с i18n (ru / en).
+   Чтобы добавить реальные медиа/ссылки — отредактируйте поля
+   type, src, link у нужного проекта.
+     type:  'video' | 'photo' | 'gif' | 'placeholder'
+     src:   путь к файлу в assets/...   (или null)
+     link:  URL проекта или null         (null => «ссылка недоступна»)
+   Тексты — объекты { ru, en }.
    ========================================================= */
 
 const ICONS = {
@@ -13,18 +15,22 @@ const ICONS = {
     <circle cx="23" cy="27" r="2.4" fill="#161413" stroke="none"/>
     <circle cx="32" cy="27" r="2.4" fill="#161413" stroke="none"/>
     <path d="M30 50 H62 M30 60 H50"/>
-    <path d="M70 70 l8 8 M78 70 l-8 8" stroke="#161413"/>
+    <path d="M70 70 l8 8 M78 70 l-8 8"/>
   </svg>`,
   mc: `<svg viewBox="0 0 100 100" fill="none" stroke="#161413" stroke-width="2.4" stroke-linejoin="round">
     <path d="M50 16 L82 32 V68 L50 84 L18 68 V32 Z"/>
     <path d="M50 16 L50 50 M50 50 L18 32 M50 50 L82 32 M18 68 L50 50 M82 68 L50 50"/>
-    <path d="M50 50 L50 84" opacity=".4" stroke-dasharray="3 4"/>
   </svg>`,
   game: `<svg viewBox="0 0 100 100" fill="none" stroke="#161413" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">
     <path d="M30 36 H70 a16 16 0 0 1 16 16 v0 a18 18 0 0 1 -18 18 a14 14 0 0 1 -11 -6 H43 a14 14 0 0 1 -11 6 A18 18 0 0 1 14 52 a16 16 0 0 1 16 -16 Z"/>
     <path d="M30 52 H42 M36 46 V58"/>
     <circle cx="64" cy="48" r="3" fill="#161413" stroke="none"/>
     <circle cx="72" cy="56" r="3" fill="#161413" stroke="none"/>
+  </svg>`,
+  bio: `<svg viewBox="0 0 100 100" fill="none" stroke="#161413" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">
+    <circle cx="50" cy="36" r="16"/>
+    <path d="M20 84 a30 30 0 0 1 60 0"/>
+    <path d="M50 60 V70" opacity=".5"/>
   </svg>`,
   sys: `<svg viewBox="0 0 100 100" fill="none" stroke="#161413" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">
     <rect x="30" y="30" width="40" height="40" rx="4"/>
@@ -35,53 +41,112 @@ const ICONS = {
 
 /* Заглушки медиа (рисуются, пока нет реального файла) */
 const PH = {
-  video: `<svg class="ph" viewBox="0 0 100 100" fill="none" stroke="#8c8780" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+  video: `<svg viewBox="0 0 100 100" fill="none" stroke="#8c8780" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
     <rect x="14" y="26" width="72" height="48" rx="6"/>
     <path d="M44 40 V60 L62 50 Z" fill="#8c8780" stroke="none"/>
   </svg>`,
-  photo: `<svg class="ph" viewBox="0 0 100 100" fill="none" stroke="#8c8780" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+  photo: `<svg viewBox="0 0 100 100" fill="none" stroke="#8c8780" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
     <rect x="12" y="22" width="76" height="56" rx="6"/>
     <circle cx="40" cy="44" r="9"/>
     <path d="M22 78 L46 54 L60 70 L72 60 L80 72"/>
   </svg>`,
-  gif: `<svg class="ph" viewBox="0 0 100 100" fill="none" stroke="#8c8780" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+  gif: `<svg viewBox="0 0 100 100" fill="none" stroke="#8c8780" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
     <rect x="14" y="22" width="72" height="56" rx="6"/>
     <text x="50" y="58" font-family="Caveat, cursive" font-size="26" font-weight="700" text-anchor="middle" fill="#8c8780" stroke="none">GIF</text>
   </svg>`,
 };
 
 const TABS = [
-  { id:'web',  label:'Web',       subtitle:'Full-Stack · веб-разработка', icon:ICONS.web,  active:true  },
-  { id:'mc',   label:'Minecraft', subtitle:'Minecraft · плагины и сборки', icon:ICONS.mc,   active:true  },
-  { id:'game', label:'Gamedev',   subtitle:'Game Development · движки и игрушки', icon:ICONS.game, active:true },
-  { id:'sys',  label:'Systems',  subtitle:'Системное программирование',   icon:ICONS.sys,  active:false }, // скрытая, неактивная
+  { id:'web',  icon:ICONS.web,  active:true,
+    label:{ru:'Web',       en:'Web'},
+    subtitle:{ru:'Full-Stack · веб-разработка', en:'Full-Stack · web development'} },
+  { id:'mc',   icon:ICONS.mc,   active:true,
+    label:{ru:'Minecraft', en:'Minecraft'},
+    subtitle:{ru:'Minecraft · плагины и сборки', en:'Minecraft · plugins & packs'} },
+  { id:'game', icon:ICONS.game, active:true,
+    label:{ru:'Gamedev', en:'Game Dev'},
+    subtitle:{ru:'Game Development · движки и игры', en:'Game Development · engines & games'} },
+  { id:'bio',  icon:ICONS.bio,  active:true,
+    label:{ru:'Биография', en:'About'},
+    subtitle:{ru:'Обо мне', en:'About me'} },
+  { id:'sys',  icon:ICONS.sys,  active:false,
+    label:{ru:'Systems', en:'Systems'},
+    subtitle:{ru:'Системное программирование', en:'Systems programming'} },
 ];
 
 const PROJECTS = {
   web: [
-    { title:'Сайт-портфолио',     type:'placeholder', src:null, link:null, desc:'Этот сайт — скетч-стиль, чёрно-белый, 3D-барабан навигации.' },
-    { title:'Веб-приложение',     type:'placeholder', src:null, link:null, desc:'Полноценный full-stack сервис. Замените на своё видео/скрин.' },
-    { title:'Лендинг',             type:'placeholder', src:null, link:null, desc:'Одностраничник с анимациями. Загрузите сюда гифку или фото.' },
-    { title:'Дашборд',             type:'placeholder', src:null, link:null, desc:'Аналитическая панель. Место для скринкаста.' },
-    { title:'API-сервис',          type:'placeholder', src:null, link:null, desc:'REST/GraphQL бэкенд. Фото архитектуры или гифка.' },
-    { title:'Интерактив-демо',     type:'placeholder', src:null, link:null, desc:'Эксперимент с WebGL. Видо-заглушка до загрузки медиа.' },
+    { title:{ru:'Сайт-портфолио',   en:'Portfolio site'},
+      desc:{ru:'Этот сайт — скетч-стиль, чёрно-белый, i18n.', en:'This site — sketch style, B&W, i18n.'},
+      type:'placeholder', src:null, link:null },
+    { title:{ru:'Веб-приложение', en:'Web app'},
+      desc:{ru:'Полноценный full-stack сервис.', en:'Full-stack service.'}, type:'placeholder', src:null, link:null },
+    { title:{ru:'Лендинг', en:'Landing page'},
+      desc:{ru:'Одностраничник с анимациями.', en:'One-pager with animations.'}, type:'placeholder', src:null, link:null },
+    { title:{ru:'Дашборд', en:'Dashboard'},
+      desc:{ru:'Аналитическая панель.', en:'Analytics dashboard.'}, type:'placeholder', src:null, link:null },
+    { title:{ru:'API-сервис', en:'API service'},
+      desc:{ru:'REST/GraphQL бэкенд.', en:'REST/GraphQL backend.'}, type:'placeholder', src:null, link:null },
+    { title:{ru:'Интерактив-демо', en:'Interactive demo'},
+      desc:{ru:'Эксперимент с WebGL.', en:'WebGL experiment.'}, type:'placeholder', src:null, link:null },
   ],
   mc: [
-    { title:'Сборка-сервер',      type:'placeholder', src:null, link:null, desc:'Кастомный сервер с плагинами. Добавьте видео-обход.' },
-    { title:'Плагин «Экономика»',  type:'placeholder', src:null, link:null, desc:'Экономическая система. Гифка с геймплеем.' },
-    { title:'Карта-приключение',  type:'placeholder', src:null, link:null, desc:'Адвенчура-карта. Фото скриншотов.' },
-    { title:'Мод-пак',            type:'placeholder', src:null, link:null, desc:'Набор модов. Видео-превью.' },
-    { title:'Спавн-строение',     type:'placeholder', src:null, link:null, desc:'Лор-спавн. Скриншот-тура.' },
-    { title:'Мини-игра',          type:'placeholder', src:null, link:null, desc:'Мини-игра в сервере. Гифка процесса.' },
+    { title:{ru:'Сборка-сервер', en:'Modpack server'},
+      desc:{ru:'Кастомный сервер с плагинами.', en:'Custom server with plugins.'}, type:'placeholder', src:null, link:null },
+    { title:{ru:'Плагин «Экономика»', en:'Economy plugin'},
+      desc:{ru:'Экономическая система.', en:'Economy system.'}, type:'placeholder', src:null, link:null },
+    { title:{ru:'Карта-приключение', en:'Adventure map'},
+      desc:{ru:'Адвенчура-карта.', en:'Adventure map.'}, type:'placeholder', src:null, link:null },
+    { title:{ru:'Мод-пак', en:'Mod pack'},
+      desc:{ru:'Набор модов.', en:'Collection of mods.'}, type:'placeholder', src:null, link:null },
+    { title:{ru:'Спавн-строение', en:'Spawn build'},
+      desc:{ru:'Лор-спавн.', en:'Lore spawn.'}, type:'placeholder', src:null, link:null },
+    { title:{ru:'Мини-игра', en:'Minigame'},
+      desc:{ru:'Мини-игра в сервере.', en:'Server minigame.'}, type:'placeholder', src:null, link:null },
   ],
   game: [
-    { title:'2D-платформер',      type:'placeholder', src:null, link:null, desc:'Сделан на своём движке. Геймплей-видео.' },
-    { title:'3D-песочница',       type:'placeholder', src:null, link:null, desc:'Воксельный мир. Скринкаст.' },
-    { title:'Рогалик',            type:'placeholder', src:null, link:null, desc:'Процедурный данжен. Гифка.' },
-    { title:'Аркада',             type:'placeholder', src:null, link:null, desc:'Мини-игра на геймджем. Видео.' },
-    { title:'Симулятор',          type:'placeholder', src:null, link:null, desc:'Физический симулятор. Фото.' },
-    { title:'Шутер',            type:'placeholder', src:null, link:null, desc:'Прототип шутера. Гифка.' },
+    { title:{ru:'2D-платформер', en:'2D platformer'},
+      desc:{ru:'Свой движок.', en:'Custom engine.'}, type:'placeholder', src:null, link:null },
+    { title:{ru:'3D-песочница', en:'3D sandbox'},
+      desc:{ru:'Воксельный мир.', en:'Voxel world.'}, type:'placeholder', src:null, link:null },
+    { title:{ru:'Рогалик', en:'Roguelike'},
+      desc:{ru:'Процедурный данжен.', en:'Procedural dungeon.'}, type:'placeholder', src:null, link:null },
+    { title:{ru:'Аркада', en:'Arcade'},
+      desc:{ru:'Мини-игра с геймджема.', en:'Game jam entry.'}, type:'placeholder', src:null, link:null },
+    { title:{ru:'Симулятор', en:'Simulator'},
+      desc:{ru:'Физический симулятор.', en:'Physics simulator.'}, type:'placeholder', src:null, link:null },
+    { title:{ru:'Шутер', en:'Shooter'},
+      desc:{ru:'Прототип шутера.', en:'Shooter prototype.'}, type:'placeholder', src:null, link:null },
   ],
 };
 
-window.PORTFOLIO = { TABS, PROJECTS, PH };
+const BIO = {
+  name: { ru:'Ничто', en:'Nichto' },            // замените на своё имя
+  handle: '@Nichtojestv0',
+  photo: 'assets/web/me.webp',
+  facts: [
+    { ru:'18 лет', en:'18 years old' },
+    { ru:'Живу в Днепре', en:'Based in Dnipro' },
+    { ru:'Принимаю к оплате: ₽ рубли, € евро, криптовалюту', en:'Accept payment: ₽ rubles, € euros, crypto' },
+    { ru:'Делаю Minecraft-моды и плагины с 12 лет', en:'Building Minecraft mods & plugins since age 12' },
+    { ru:'50 Minecraft-проектов', en:'50 Minecraft projects shipped' },
+    { ru:'Более 10 веб-сайтов', en:'10+ websites built' },
+    { ru:'Профессионал в бэкенде', en:'Backend professional' },
+    { ru:'Шарю за C++, сейчас пишу свою игру', en:'Strong C++; currently writing my own game' },
+    { ru:'В будущем хочу стать системным программистом', en:'Future goal: become a systems programmer' },
+  ],
+  stacks: [
+    { cat:{ru:'Бэкенд',en:'Backend'}, items:['Node.js','Python · FastAPI','Go','PostgreSQL','Redis','Docker','REST / GraphQL'] },
+    { cat:{ru:'Фронтенд',en:'Frontend'}, items:['TypeScript','React','HTML / CSS'] },
+    { cat:{ru:'Minecraft',en:'Minecraft'}, items:['Java','Spigot / Paper','Bukkit API'] },
+    { cat:{ru:'Game Dev',en:'Game Dev'}, items:['C++','CMake','OpenGL','SDL2','свой движок / own engine'] },
+    { cat:{ru:'Системы / low-level',en:'Systems / low-level'}, items:['C','C++','Rust (учу / learning)','Linux','POSIX'] },
+  ],
+};
+
+const UI = {
+  ru: { works:'работ', openLabel:'открыть ↗', linkUnavailable:'ссылка пока недоступна', media:'медиа' },
+  en: { works:'works', openLabel:'open ↗', linkUnavailable:'link unavailable', media:'media' },
+};
+
+window.PORTFOLIO = { ICONS, PH, TABS, PROJECTS, BIO, UI, LANGS:['ru','en'] };
