@@ -90,6 +90,21 @@ body{
   position:relative;
 }
 .hero-gear canvas{ display:block; width:100% !important; height:100% !important; }
+
+/* боковая декоративная шестерёнка (половина за краем, ×2.5) */
+.side-gear{
+  position:fixed;
+  right:calc(230px * -0.5);
+  top:50%;
+  width:230px; height:230px;
+  transform:translateY(-50%) rotate(0deg);
+  pointer-events:none;
+  opacity:.4;
+  z-index:0;
+  will-change:transform;
+}
+.side-gear svg{ width:100%; height:100%; display:block; overflow:visible; filter:url(#rough-hard); }
+@media (max-width:720px){ .side-gear{ width:150px; height:150px; right:calc(150px * -0.5); opacity:.32; } }
 @media (max-width:560px){ .hero{ margin-top:10px; } }
 
 /* =========================================================
@@ -171,7 +186,7 @@ body{
   position:relative; aspect-ratio:16/10; background:var(--paper-2);
   border-bottom:var(--stroke) solid var(--ink); display:grid; place-items:center; overflow:hidden;
 }
-.card .media video,.card .media img{ width:100%; height:100%; object-fit:cover; display:block; filter:grayscale(1) contrast(1.05); }
+.card .media video,.card .media img{ width:100%; height:100%; object-fit:cover; display:block; filter:none; }
 .card .media .ph{ display:flex; flex-direction:column; align-items:center; gap:8px; color:var(--muted); }
 .card .media .ph svg{ width:70px; height:70px; }
 .card .media .ph .ph-tag{ font-size:13px; letter-spacing:3px; text-transform:uppercase; }
@@ -198,7 +213,7 @@ body{
 
 /* галерея (несколько изображений + стрелки) */
 .gallery{ position:absolute; inset:0; }
-.gallery .gal-img{ position:absolute; inset:0; width:100%; height:100%; object-fit:cover; filter:grayscale(1) contrast(1.05); }
+.gallery .gal-img{ position:absolute; inset:0; width:100%; height:100%; object-fit:cover; filter:none; }
 .gal-arrow{
   position:absolute; top:50%; transform:translateY(-50%);
   width:30px; height:30px; border-radius:50%;
@@ -226,7 +241,7 @@ body{
   position:relative; border:var(--stroke) solid var(--ink); border-radius:var(--radius);
   background:var(--paper-2); box-shadow:6px 8px 0 rgba(22,20,19,.2); overflow:hidden; aspect-ratio:1/1;
 }
-.bio-photo img{ width:100%; height:100%; object-fit:cover; display:block; filter:grayscale(1) contrast(1.05); }
+.bio-photo img{ width:100%; height:100%; object-fit:cover; display:block; filter:none; }
 .bio-photo::after{
   content:""; position:absolute; inset:6px; border:1.4px solid var(--paper);
   border-radius:calc(var(--radius) - 4px); pointer-events:none; opacity:.7;
@@ -246,6 +261,9 @@ body{
 .bio-stack h4{ margin:0 0 6px; font-family:var(--font-display); font-weight:700; font-size:18px; color:var(--ink); }
 .bio-chips{ display:flex; flex-wrap:wrap; gap:7px; }
 .bio-chip{ border:1.6px solid var(--ink); border-radius:8px; background:var(--paper); padding:3px 10px; font-size:14px; color:var(--ink-soft); box-shadow:2px 2px 0 rgba(22,20,19,.12); }
+
+/* иллюстрация (в духе whoisguilty) */
+.bio-wig{ display:block; width:min(240px,52vw); margin:36px auto 0; opacity:.96; }
 
 /* =========================================================
    Footer + кнопка «начать» (анимация в духе whoisguilty)

@@ -18,7 +18,8 @@
   const content = document.getElementById('content');
   const arrowL  = document.getElementById('arrowLeft');
   const arrowR  = document.getElementById('arrowRight');
-  const gearEl  = document.getElementById('drumGear');
+  const heroEl   = document.getElementById('heroGear');
+  const sideGearEl = document.getElementById('drumGear');
   const langSw  = document.getElementById('langSwitch');
   const swapEl  = document.getElementById('swap');
   const swapTxt = document.getElementById('swapText');
@@ -31,41 +32,56 @@
   const clamp = (n, m) => ((n % m) + m) % m;
 
   /* =========================================================
-     3D-МОДЕЛЬ ШЕСТЕРНКИ (Three.js): короткий цилиндр, по кругу
-     вырезаны трапециевидные впадины => зубья (плоская вершина,
-     боковые грани почти вертикальные). Верх чистый. На боку —
-     редкие короткие вертикальные полоски (до 3 рядом, без
-     штриховки). Без холостого вращения; видна в рамке (обрезана).
+     ГЕРОЙ-ШЕСТЕРНЯ (#heroGear, Three.js): короткий цилиндр с
+     трапециевидными впадинами. Крутится ТОЛЬКО при смене вкладок
+     (мягко влево/вправо). Верх чистый; на боку — редкие короткие
+     вертикальные полоски (≤4 на грань, не от краёв).
+     БОКОВОЙ drumGear (#drumGear): декоративная SVG-шестерёнка,
+     слабый холостой ход + сильно при скролле.
      ========================================================= */
   let gearState = null;
-  let gearAngle = 0, gearVel = 0;
+  let heroAngle = 0, heroTarget = 0;     // hero: целевой угол (меняется при смене вкладок)
+  let sideAngle = 0, sideVel = 0;        // боковая: холостой ход + скролл
+
+  /* боковая декоративная шестерёнка */
+  function buildSideCog(){
+    if (!sideGearEl) return;
+    const teeth=24, Rr=100, Rt=122, hub=24, tw=8;
+    let s=[`<svg viewBox="-130 -130 260 260" preserveAspectRatio="xMidYMid meet">`];
+    s.push(`<g fill="none" stroke="#161413" stroke-width="2.4" stroke-linejoin="round">`);
+    for(let i=0;i<teeth;i++){ const a=i*(360/teeth); s.push(`<rect x="${Rr-1.5}" y="${-tw/2}" width="${Rt-Rr+3}" height="${tw}" transform="rotate(${a})" stroke-width="2.2"/>`); }
+    s.push(`<circle cx="0" cy="0" r="${Rr}" stroke-width="2.4"/>`);
+    s.push(`<circle cx="0" cy="0" r="${Rr-16}" stroke-width="1.4"/>`);
+    for(let i=0;i<6;i++){ const a=i*60*Math.PI/180; const x1=(hub+2)*Math.cos(a),y1=(hub+2)*Math.sin(a),x2=(Rr-18)*Math.cos(a),y2=(Rr-18)*Math.sin(a); s.push(`<line x1="${x1.toFixed(1)}" y1="${y1.toFixed(1)}" x2="${x2.toFixed(1)}" y2="${y2.toFixed(1)}" stroke-width="1.8"/>`); }
+    s.push(`<circle cx="0" cy="0" r="${hub}" stroke-width="2.4"/>`);
+    s.push(`<circle cx="0" cy="0" r="${hub-7}" stroke-width="1.2"/>`);
+    s.push(`</g></svg>`);
+    sideGearEl.innerHTML = s.join("");
+  }
 
   function makeVerticalStripesTex(THREE){
-    const W=512, H=128;
+    const W=256, H=128;
     const c=document.createElement('canvas'); c.width=W; c.height=H;
     const x=c.getContext('2d');
     x.fillStyle='#dfd8c8'; x.fillRect(0,0,W,H);
     x.strokeStyle='#161413'; x.lineWidth=2;
-    let rng=12345; const rnd=()=>{ rng=(rng*1103515245+12345)&0x7fffffff; return rng/0x7fffffff; };
-    let px=12;
-    while(px < W-4){
-      const cluster=1+Math.floor(rnd()*3);          // 1..3 рядом, не более
-      for(let k=0;k<cluster && px<W;k++){
-        const h=12+rnd()*46;                         // короткие, разной длины
-        const y=rnd()*(H-h);                          // на разной высоте
-        x.beginPath(); x.moveTo(px,y); x.lineTo(px,y+h); x.stroke();
-        px+=3;
-      }
-      px+=24+rnd()*64;                               // редко
+    let rng=98765; const rnd=()=>{ rng=(rng*1103515245+12345)&0x7fffffff; return rng/0x7fffffff; };
+    const top=16, bot=H-16;                 // не от краёв сверху/снизу
+    const count=2+Math.floor(rnd()*3);      // 2..4 полосы (≤4 на грань)
+    for(let k=0;k<count;k++){
+      const px=14+rnd()*(W-28);
+      const h=10+rnd()*30;                  // короткие, разной длины
+      const y=top+rnd()*((bot-top)-h);      // на разной высоте
+      x.beginPath(); x.moveTo(px,y); x.lineTo(px,y+h); x.stroke();
     }
     const t=new THREE.CanvasTexture(c);
-    t.wrapS=t.wrapT=THREE.RepeatWrapping; t.repeat.set(2,1);
+    t.wrapS=t.wrapT=THREE.RepeatWrapping; t.repeat.set(16,1);   // одна плитка на грань зуба
     return t;
   }
   function gearShape(THREE, teeth, Rroot, Rtip){
     const s=new THREE.Shape();
     const step=Math.PI*2/teeth;
-    const base=step*0.50, top=step*0.42, taper=(base-top)/2; // 0.04*step — почти прямоугольные
+    const base=step*0.50, top=step*0.42, taper=(base-top)/2; // почти прямоугольные зубья
     const P=(r,ang)=>[r*Math.cos(ang), r*Math.sin(ang)];
     for(let i=0;i<teeth;i++){
       const a=i*step;
@@ -78,40 +94,42 @@
     return s;
   }
   function initGear(){
-    const THREE = window.THREE;
-    if (!THREE || !gearEl || gearState) return;
-    const w = gearEl.clientWidth || 600, h = gearEl.clientHeight || 500;
-    const scene = new THREE.Scene();
-    const camera = new THREE.PerspectiveCamera(50, w/h, 0.1, 100);
-    camera.position.set(0, 1.4, 4.4); camera.lookAt(0, 0, 0);   // чуть ниже, менее изометрично; видна целиком
-    const renderer = new THREE.WebGLRenderer({ alpha:true, antialias:true });
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio||1, 2));
-    renderer.setSize(w, h); renderer.setClearColor(0x000000, 0);
-    gearEl.appendChild(renderer.domElement);
-
-    const teeth = 16, Rroot = 2.0, Rtip = 2.5, H = 0.8;
-    const shape = gearShape(THREE, teeth, Rroot, Rtip);
-    const geo = new THREE.ExtrudeGeometry(shape, { depth:H, bevelEnabled:false, steps:1, curveSegments:1 });
+    const THREE=window.THREE;
+    if(!THREE || !heroEl || gearState) return;
+    const w=heroEl.clientWidth||600, h=heroEl.clientHeight||500;
+    const scene=new THREE.Scene();
+    const camera=new THREE.PerspectiveCamera(50, w/h, 0.1, 100);
+    camera.position.set(0, 1.3, 4.8); camera.lookAt(0,0,0);   // ниже + видна целиком (без обрезки)
+    const renderer=new THREE.WebGLRenderer({alpha:true, antialias:true});
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio||1,2));
+    renderer.setSize(w,h); renderer.setClearColor(0x000000,0);
+    heroEl.appendChild(renderer.domElement);
+    const teeth=16, Rroot=1.6, Rtip=2.0, H=0.66;
+    const shape=gearShape(THREE, teeth, Rroot, Rtip);
+    const geo=new THREE.ExtrudeGeometry(shape, {depth:H, bevelEnabled:false, steps:1, curveSegments:1});
     geo.rotateX(-Math.PI/2); geo.center();
-    const capsMat = new THREE.MeshBasicMaterial({ color: 0xf6f2e9 });             // верх чистый
-    const sideMat = new THREE.MeshBasicMaterial({ map: makeVerticalStripesTex(THREE), color: 0xffffff });
-    const mesh = new THREE.Mesh(geo, [capsMat, sideMat]);
+    const capsMat=new THREE.MeshBasicMaterial({color:0xf6f2e9});               // верх чистый
+    const sideMat=new THREE.MeshBasicMaterial({map:makeVerticalStripesTex(THREE), color:0xffffff});
+    const mesh=new THREE.Mesh(geo, [capsMat, sideMat]);
     scene.add(mesh);
-    const edges = new THREE.EdgesGeometry(geo, 1);
-    const lines = new THREE.LineSegments(edges, new THREE.LineBasicMaterial({ color: 0x161413 }));
+    const edges=new THREE.EdgesGeometry(geo, 1);
+    const lines=new THREE.LineSegments(edges, new THREE.LineBasicMaterial({color:0x161413}));
     scene.add(lines);
-
-    gearState = { renderer, scene, camera, mesh, lines };
-    requestAnimationFrame(gearLoop);
+    gearState={renderer,scene,camera,mesh,lines};
   }
-  function gearLoop(){
-    if (!gearState) return;
-    gearAngle += gearVel;                // только от скролла, без холостого хода
-    gearVel *= 0.92;
-    gearState.mesh.rotation.y = gearAngle;
-    gearState.lines.rotation.y = gearAngle;
-    gearState.renderer.render(gearState.scene, gearState.camera);
-    requestAnimationFrame(gearLoop);
+  function tick(){
+    // hero: мягко к целевому углу (меняется только при смене вкладок)
+    heroAngle += (heroTarget - heroAngle)*0.12;
+    if(gearState){
+      gearState.mesh.rotation.y = heroAngle;
+      gearState.lines.rotation.y = heroAngle;
+      gearState.renderer.render(gearState.scene, gearState.camera);
+    }
+    // боковая шестерёнка: слабый холостой ход + инерция от скролла
+    sideAngle += 0.18 + sideVel;
+    sideVel *= 0.9;
+    if(sideGearEl) sideGearEl.style.transform = `translateY(-50%) rotate(${sideAngle.toFixed(2)}deg)`;
+    requestAnimationFrame(tick);
   }
 
   /* =========================================================
@@ -193,16 +211,18 @@
         <p class="bio-handle">${esc(BIO.handle)}</p>
         <ul class="bio-facts">${facts}</ul>
         <div class="bio-stacks">${stacks}</div>
-      </div></div>`;
+      </div></div>
+      <img class="bio-wig" src="assets/wig-dev.svg" alt="иллюстрация"/>`;
   }
 
   function esc(s){ return String(s==null?'':s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
 
   function goTo(i){
     if (i === current) return;
+    const dir = (((i - current) + N) % N <= N/2) ? 1 : -1; // кратчайшее направление
     current = clamp(i, N);
     applyTabs(); renderContent();
-    gearVel += 6;
+    heroTarget += dir * 0.32;   // мягкий поворот hero-шестерни при смене вкладки
   }
   const next = () => goTo((current+1)%N);
   const prev = () => goTo((current-1+N)%N);
@@ -215,32 +235,21 @@
     applyTabs(); renderContent();
   }
 
-  const SWAP_PHRASES = {
-    ru: ['Тэкс, это сюда…','О, ещё же ЭТО!','Ага, нормас','Всё, погналиииии!'],
-    en: ['Okay, this goes here…','Oh, and THIS too!','Yeah, all good','Alright, let’s goooo!'],
-  };
+  const SWAP_TEXT = { ru:'Всё, погналиииии!', en:'Alright, let’s goooo!' };
   function setLang(l){
-    playSwap(SWAP_PHRASES[l] || SWAP_PHRASES.en);
+    playSwap(SWAP_TEXT[l] || SWAP_TEXT.en);
     // переводим контент в середине свапа, когда панель закрывает экран
     setTimeout(() => applyLang(l), 450);
   }
 
-  /* переход-свап при смене языка: цикл фраз из оригинала whoisguilty */
-  let swapIV = null;
-  function playSwap(phrases){
+  /* переход-свап при смене языка: один стабильный текст */
+  function playSwap(text){
     if (!swapEl || !swapTxt) return;
-    let i = 0;
-    swapTxt.textContent = phrases[0];
+    swapTxt.textContent = text;
     swapEl.classList.remove('run');
-    void swapEl.offsetWidth;
+    void swapEl.offsetWidth;   // reflow для перезапуска анимации
     swapEl.classList.add('run');
-    if (swapIV) clearInterval(swapIV);
-    swapIV = setInterval(() => {
-      i++;
-      if (i >= phrases.length){ clearInterval(swapIV); swapIV = null; return; }
-      swapTxt.textContent = phrases[i];
-    }, 175);
-    setTimeout(() => { if (swapIV){ clearInterval(swapIV); swapIV = null; } swapEl.classList.remove('run'); }, 950);
+    setTimeout(() => swapEl.classList.remove('run'), 950);
   }
 
   /* ввод */
@@ -255,7 +264,7 @@
   }, { passive:false });
 
   window.addEventListener('wheel', (e) => {
-    gearVel += (e.deltaY>0?1:-1) * Math.min(Math.abs(e.deltaY)/30, 6);
+    sideVel += (e.deltaY>0?1:-1) * Math.min(Math.abs(e.deltaY)/30, 6);
   }, { passive:true });
 
   window.addEventListener('keydown', (e) => {
@@ -285,8 +294,8 @@
   window.addEventListener('resize', () => {
     clearTimeout(rT);
     rT = setTimeout(() => {
-      if (gearState && gearEl){
-        const w = gearEl.clientWidth || 600, h = gearEl.clientHeight || 500;
+      if (gearState && heroEl){
+        const w = heroEl.clientWidth || 600, h = heroEl.clientHeight || 500;
         gearState.renderer.setSize(w, h);
         gearState.camera.aspect = w/h;
         gearState.camera.updateProjectionMatrix();
@@ -297,7 +306,9 @@
   /* старт */
   buildTabs();
   applyLang('ru');
-  requestAnimationFrame(() => initGear());
+  buildSideCog();
+  requestAnimationFrame(initGear);
+  requestAnimationFrame(tick);
 
   window.NAV = { next, prev, goTo, setLang, current:()=>current };
 })();
