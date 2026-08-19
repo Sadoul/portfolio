@@ -60,23 +60,21 @@
 <main class="stage">
 
   <!-- 3D-МЕХАНИЗМ: большая шестерня + деревянные стрелки (Three.js).
-       Стрелки — часть 3D-сцены: клик по ним листает вкладки и
-       поворачивает шестерню на 30° в нужную сторону. -->
+       Вкладки живут прямо на шестерне: 4 таблички на ободе, активная
+       подсвечена. Клик по табличке — переход, клик по стрелке — шаг. -->
   <section class="hero" aria-label="Механизм-навигация">
-    <div class="hero-mech" id="heroMech" aria-hidden="true"></div>
+    <div class="hero-mech" id="heroMech"></div>
+    <!-- доступная навигация для клавиатуры и скринридеров: 3D-сцена
+         мышью, эти кнопки — с клавиатуры (визуально скрыты) -->
+    <div class="mech-a11y" id="mechA11y" role="tablist" aria-label="Разделы"></div>
   </section>
 
-  <nav class="tabs" id="tabs" aria-label="Разделы">
-    <button class="tab-arrow" id="arrowLeft" aria-label="Назад">
-      <svg viewBox="0 0 40 40"><path d="M27 7 L13 20 L27 33" class="ink-stroke"/></svg>
-    </button>
-    <div class="tab-strip" id="tabStrip"></div>
-    <button class="tab-arrow" id="arrowRight" aria-label="Вперёд">
-      <svg viewBox="0 0 40 40"><path d="M13 7 L27 20 L13 33" class="ink-stroke"/></svg>
-    </button>
-  </nav>
-
   <p class="tab-sub" id="tabSub">—</p>
+
+  <!-- декор вкладки для узких экранов: в потоке, между механизмом и
+       карточками — виден сразу и текста над ним нет. На широких
+       экранах вместо него работают боковые колонки в полях страницы. -->
+  <div class="tab-decor-strip" id="tabDecorStrip" aria-hidden="true"></div>
 
   <section class="content" id="content" aria-live="polite"></section>
 
@@ -95,9 +93,14 @@
 <!-- боковая декоративная шестерёнка (слабо крутится + сильно при скролле) -->
 <div class="side-gear" id="drumGear" aria-hidden="true"></div>
 
+<!-- декор вкладки: у каждого раздела свои крутящиеся детали,
+     ржавые трубы и капающие капли (js/decor.js) -->
+<div class="tab-decor" id="tabDecor" aria-hidden="true"></div>
+
 <script src="https://unpkg.com/three@0.137.0/build/three.min.js"></script>
 <script src="js/data.js"></script>
 <script src="js/mechanism.js"></script>
+<script src="js/decor.js"></script>
 <script src="js/nav.js"></script>
 </body>
 </html>

@@ -12,13 +12,10 @@
   const ACTIVE = TABS.filter(t => t.active);
   const N = ACTIVE.length;
 
-  const tabsEl  = document.getElementById('tabs');
-  const strip   = document.getElementById('tabStrip');
   const subEl   = document.getElementById('tabSub');
   const content = document.getElementById('content');
-  const arrowL  = document.getElementById('arrowLeft');
-  const arrowR  = document.getElementById('arrowRight');
   const heroEl  = document.getElementById('heroMech');
+  const a11yEl  = document.getElementById('mechA11y');
   const sideGearEl = document.getElementById('drumGear');
   const langSw  = document.getElementById('langSwitch');
   const swapEl  = document.getElementById('swap');
@@ -55,16 +52,20 @@
     sideGearEl.innerHTML = s.join("");
   }
 
-  /* надпись на металлической табличке механизма = активная вкладка */
+  /* 4 таблички на ободе шестерни = 4 вкладки, активная подсвечена */
+  const plateLabels = () => ACTIVE.map(t => L(t.label));
   function syncPlate(){
-    if (window.MECHANISM && MECHANISM.ready()) MECHANISM.setLabel(L(ACTIVE[current].label));
+    if (window.MECHANISM && MECHANISM.ready())
+      MECHANISM.setLabels(plateLabels(), current);
   }
   function initMech(){
     if (!window.MECHANISM || !heroEl) return;
     MECHANISM.init({
       el: heroEl,
-      label: L(ACTIVE[current].label),
-      onStep: (dir) => { if (dir > 0) next(); else prev(); }   // клик по деревянной стрелке
+      labels: plateLabels(),
+      activeIndex: current,
+      onStep:  (dir) => { if (dir > 0) next(); else prev(); },  // деревянная стрелка
+      onPlate: (i)   => goTo(i)                                 // табличка на ободе
     });
   }
   /* холостой ход декоративной шестерёнки в углу страницы */
@@ -76,28 +77,36 @@
   }
 
   /* =========================================================
-     Табы (двойной span -> слайд-анимация как у кнопки «начать»)
+     Вкладки живут на шестерне (3D). Здесь — только невидимый
+     слой настоящих кнопок: он даёт клавиатуру и скринридер,
+     потому что кликабельная геометрия внутри canvas для них
+     недоступна. Визуально слоя нет (.mech-a11y в CSS).
      ========================================================= */
-  function tabHTML(label){
-    const t = esc(label);
-    return `<span class="t">${t}</span><span class="t">${t}</span>`;
-  }
   function buildTabs(){
-    strip.innerHTML = "";
+    if (!a11yEl) return;
+    a11yEl.innerHTML = "";
     tabButtons = [];
     ACTIVE.forEach((tab, i) => {
       const b = document.createElement('button');
-      b.className = 'tab';
+      b.className = 'mech-tab';
+      b.type = 'button';
       b.dataset.index = i;
-      b.innerHTML = tabHTML(L(tab.label));
+      b.setAttribute('role', 'tab');
+      b.textContent = L(tab.label);
       b.addEventListener('click', () => goTo(i));
-      strip.appendChild(b);
+      a11yEl.appendChild(b);
       tabButtons.push(b);
     });
   }
   function applyTabs(){
-    tabButtons.forEach((b, i) => b.classList.toggle('is-active', i === current));
+    tabButtons.forEach((b, i) => {
+      const on = i === current;
+      b.classList.toggle('is-active', on);
+      b.setAttribute('aria-selected', on ? 'true' : 'false');
+      b.tabIndex = on ? 0 : -1;
+    });
     subEl.textContent = L(ACTIVE[current].subtitle);
+    if (window.TAB_DECOR) TAB_DECOR.show(ACTIVE[current].id);
   }
 
   function renderContent(){
@@ -176,9 +185,9 @@
     lang = l;
     document.documentElement.lang = l;
     langSw.querySelectorAll('.lang-btn').forEach(b => b.setAttribute('aria-pressed', b.dataset.lang === l ? 'true':'false'));
-    tabButtons.forEach((b,i)=> b.innerHTML = tabHTML(L(ACTIVE[i].label)));
+    tabButtons.forEach((b,i)=> b.textContent = L(ACTIVE[i].label));
     applyTabs(); renderContent();
-    syncPlate();   // обновить надпись на металлической табличке
+    syncPlate();   // переписать все 4 таблички на шестерне
   }
 
   const SWAP_TEXT = { ru:'Всё, погналиииии!', en:'Alright, let’s goooo!' };
@@ -199,8 +208,10 @@
   }
 
   /* ввод */
+  /* колесо над механизмом листает вкладки; страница при этом
+     не скроллится только если курсор реально над сценой */
   let wheelLock = false;
-  tabsEl.addEventListener('wheel', (e) => {
+  if (heroEl) heroEl.addEventListener('wheel', (e) => {
     if (Math.abs(e.deltaY) < 6) return;
     e.preventDefault();
     if (wheelLock) return;
@@ -217,8 +228,6 @@
     if (e.key==='ArrowLeft'){ e.preventDefault(); prev(); }
     else if (e.key==='ArrowRight'){ e.preventDefault(); next(); }
   });
-  arrowL.addEventListener('click', prev);
-  arrowR.addEventListener('click', next);
   langSw.querySelectorAll('.lang-btn').forEach(b => b.addEventListener('click', () => setLang(b.dataset.lang)));
 
   /* галерея: переключение стрелками */
@@ -246,6 +255,7 @@
 
   /* старт */
   buildTabs();
+  if (window.TAB_DECOR) TAB_DECOR.init(ACTIVE.map(t=>t.id));
   applyLang('ru');
   buildSideCog();
   requestAnimationFrame(initMech);

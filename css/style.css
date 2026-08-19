@@ -99,10 +99,11 @@ body{
   .hero-mech{ width:100vw; aspect-ratio:4/3; max-height:46vh; }
 }
 
-/* боковая декоративная шестерёнка в позиции сайта (медленная) */
+/* боковая декоративная шестерёнка в позиции сайта (медленная).
+   Опущена ниже: раньше висела у самого верха и лезла в шапку. */
 .side-gear{
   position:absolute;
-  top:-30px; right:-40px;
+  top:320px; right:-46px;
   width:170px; height:170px;
   pointer-events:none;
   opacity:.3;
@@ -110,7 +111,9 @@ body{
   will-change:transform;
 }
 .side-gear svg{ width:100%; height:100%; display:block; overflow:visible; filter:url(#rough-hard); }
-@media (max-width:720px){ .side-gear{ width:120px; height:120px; top:-20px; right:-25px; opacity:.24; } }
+@media (max-width:720px){
+  .side-gear{ width:120px; height:120px; top:250px; right:-30px; opacity:.24; }
+}
 @media (max-width:560px){ .hero{ margin-top:10px; } }
 
 /* =========================================================
@@ -118,48 +121,32 @@ body{
    ========================================================= */
 .stage{ max-width:1180px; margin:0 auto; padding:10px 22px 80px; position:relative; z-index:2; }
 
-.tabs{ display:flex; align-items:center; justify-content:center; gap:10px; margin:6px auto 0; }
-.tab-arrow{
-  background:var(--paper); border:var(--stroke) solid var(--ink);
-  width:42px; height:42px; border-radius:50%;
-  display:grid; place-items:center; cursor:pointer; flex:0 0 auto;
-  box-shadow:3px 3px 0 rgba(22,20,19,.18);
-  transition: transform .15s ease, box-shadow .15s ease;
+/* Вкладки живут на шестерне (3D). Этот слой — настоящие кнопки для
+   клавиатуры и скринридеров: геометрия внутри canvas им недоступна.
+   Визуально скрыт, но при фокусе кнопка проявляется — иначе tab-навигация
+   вслепую. */
+.mech-a11y{
+  position:absolute; left:50%; transform:translateX(-50%);
+  bottom:2px; display:flex; gap:6px; z-index:4;
 }
-.tab-arrow:hover{ transform:translateY(-1px); box-shadow:4px 4px 0 rgba(22,20,19,.25); }
-.tab-arrow:active{ transform:translate(1px,1px); }
-.tab-arrow svg{ width:20px; height:20px; }
-
-.tab-strip{ display:flex; gap:8px; flex-wrap:wrap; justify-content:center; }
-.tab{
-  position:relative; overflow:hidden;
-  border:2px solid var(--ink); border-radius:14px;
-  background:var(--paper); padding:0;
-  cursor:pointer; user-select:none;
-  font-family:var(--font-display); font-weight:500; font-size:18px;
-  letter-spacing:.5px; color:var(--ink);
-  box-shadow:3px 3px 0 rgba(22,20,19,.16);
-  transition: background .15s ease, color .15s ease, box-shadow .15s ease, transform .15s ease;
+.mech-tab{
+  width:1px; height:1px; padding:0; margin:0; border:0;
+  overflow:hidden; clip-path:inset(50%); white-space:nowrap;
+  background:var(--paper); color:var(--ink); cursor:pointer;
 }
-.tab .t{
-  position:absolute; inset:0; display:grid; place-items:center;
-  padding:0 18px; height:44px;
-  transition: transform .34s cubic-bezier(.7,0,.2,1);
+.mech-tab:focus-visible{
+  width:auto; height:auto; padding:6px 14px; clip-path:none;
+  border:2px solid var(--ink); border-radius:12px;
+  font-family:var(--font-display); font-size:15px;
+  outline:3px solid var(--ink); outline-offset:2px;
 }
-.tab .t:first-child{ transform:translateY(0); }
-.tab .t:last-child{ transform:translateY(115%); }
-.tab:hover{ transform:translateY(-1px); box-shadow:4px 4px 0 rgba(22,20,19,.24); }
-.tab:hover .t:first-child{ transform:translateY(-115%); }
-.tab:hover .t:last-child{ transform:translateY(0); }
-.tab.is-active{ background:var(--ink); color:var(--paper); box-shadow:4px 4px 0 rgba(22,20,19,.28); }
+.mech-tab.is-active:focus-visible{ background:var(--ink); color:var(--paper); }
 
 .tab-sub{
   text-align:center; font-family:var(--font-body);
   font-size:18px; color:var(--ink-soft); margin:8px 0 26px;
 }
 @media (max-width:560px){
-  .tab{ font-size:15px; padding:7px 12px; }
-  .tab-arrow{ width:36px; height:36px; }
   .tab-sub{ font-size:15px; margin-bottom:18px; }
 }
 
@@ -330,3 +317,97 @@ body{
   100%{ transform:translateY(-8px); opacity:0; }
 }
 @media (max-width:560px){ .swap__text{ font-size:30px; } }
+
+/* =========================================================
+   Декор вкладок (js/decor.js): у каждого раздела свои детали
+   по краям — шестерёнки крутятся, ржавые трубы капают.
+   Фиксированный слой под контентом, клики не перехватывает.
+   ========================================================= */
+.tab-decor{ position:fixed; inset:0; pointer-events:none; z-index:0; }
+.dc-pane{
+  position:absolute; inset:0; opacity:0; transition:opacity .45s ease;
+  /* «поле» страницы — сколько места остаётся слева от текстовой колонки
+     (.stage: max-width 1180 + padding 22). Декор живёт в поле и не
+     наползает на текст, пока поле есть. */
+  --gut: max(22px, calc((100vw - 1180px)/2 + 22px));
+}
+.dc-pane.is-on{ opacity:1; }
+.dc-pane svg{
+  position:absolute; overflow:visible;
+  stroke-linejoin:round;
+  opacity:.30;
+  filter:url(#rough-hard);
+}
+/* внутренний край упирается в край текстовой колонки: на широких
+   экранах пересечения с текстом нет вообще */
+.dc-pane .dc-l{ bottom:18px; width:250px; height:290px;
+                left:calc(var(--gut) - 250px); }
+.dc-pane .dc-r{ top:44%;     width:215px; height:280px;
+                left:calc(100% - var(--gut)); }
+
+/* Поля не хватает — декор уходит за край и остаётся лёгкой фактурой:
+   текст рисуется поверх, но конкурировать за внимание он не должен. */
+/* Полоса под контентом — вариант для узких экранов. В потоке,
+   поэтому текст на неё не наезжает: под ней его просто нет. */
+.tab-decor-strip{
+  display:none; position:relative; z-index:1;
+  margin:2px auto 18px; max-width:620px;
+  pointer-events:none;
+}
+.tab-decor-strip .dc-pane--strip{
+  position:absolute; inset:0; opacity:0; transition:opacity .45s ease;
+}
+.tab-decor-strip .dc-pane--strip.is-on{ opacity:1; }
+.dc-s{
+  position:absolute; left:0; top:0; width:100%; height:100%;
+  overflow:visible; stroke-linejoin:round;
+  opacity:.26; filter:url(#rough-hard);
+}
+
+/* Поля страницы больше нет: боковые колонки пришлось бы либо загонять
+   под текст, либо срезать почти целиком. Показываем полосу. */
+@media (max-width:1400px){
+  .tab-decor{ display:none; }
+  .tab-decor-strip{ display:block; aspect-ratio:560/182; }
+}
+@media (max-width:720px){
+  .tab-decor-strip{ margin-bottom:12px; }
+  .dc-s{ opacity:.2; }
+}
+
+.dc-spin{ animation:dcSpin 26s linear infinite; transform-origin:0 0; }
+@keyframes dcSpin{ to{ transform:rotate(360deg); } }
+
+/* капля: набухает у среза, срывается, падает и гаснет */
+.dc-drip{
+  animation:dcDrip 4.4s cubic-bezier(.45,0,.9,.6) infinite;
+  transform-origin:50% 0;
+}
+@keyframes dcDrip{
+  0%,   58%{ transform:translateY(0) scale(.35); opacity:0; }
+  70%      { transform:translateY(0) scale(1);   opacity:.95; }
+  76%      { transform:translateY(2px) scale(1); opacity:.95; }
+  97%      { transform:translateY(var(--dc-fall,60px)) scale(.72); opacity:0; }
+  100%     { transform:translateY(var(--dc-fall,60px)) scale(.72); opacity:0; }
+}
+
+/* поршень: шток ходит в гильзе */
+.dc-piston{ animation:dcPiston 3.6s ease-in-out infinite; }
+@keyframes dcPiston{
+  0%,100%{ transform:translateY(0); }
+  50%    { transform:translateY(16px); }
+}
+
+/* стрелка манометра: подрагивает в пределах сектора */
+.dc-needle{ animation:dcNeedle 5.2s ease-in-out infinite; transform-origin:0 0; }
+@keyframes dcNeedle{
+  0%,100%{ transform:rotate(-52deg); }
+  35%    { transform:rotate(28deg); }
+  55%    { transform:rotate(14deg); }
+  80%    { transform:rotate(44deg); }
+}
+
+@media (prefers-reduced-motion: reduce){
+  .dc-spin, .dc-drip, .dc-piston, .dc-needle{ animation:none; }
+  .dc-drip{ opacity:.6; }
+}
