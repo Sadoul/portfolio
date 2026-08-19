@@ -85,18 +85,16 @@ body{
   margin:18px auto 0; padding:20px 0 10px;
 }
 .hero-gear{
-  width:min(74vw, 540px);
+  width:min(78vw, 560px);
   aspect-ratio:360/300;
   position:relative;
+  border:2px solid var(--ink);
+  border-radius:18px;
+  background:var(--paper-2);
+  overflow:hidden;            /* рамка: шестерёнка видна не целиком */
+  box-shadow:5px 7px 0 rgba(22,20,19,.18);
 }
-.hero-gear svg{ width:100%; height:100%; display:block; overflow:visible; }
-.hero-pointer{
-  position:absolute; left:50%; bottom:-6px;
-  transform:translateX(-50%);
-  width:30px; height:22px;
-  pointer-events:none;
-}
-.hero-pointer svg{ width:100%; height:100%; }
+.hero-gear canvas{ display:block; width:100% !important; height:100% !important; }
 @media (max-width:560px){ .hero{ margin-top:10px; } }
 
 /* =========================================================

@@ -32,41 +32,47 @@
 
   /* =========================================================
      3D-МОДЕЛЬ ШЕСТЕРНКИ (Three.js): короткий цилиндр, по кругу
-     вырезаны трапециевидные впадины => зубья. На зубьях —
-     горизонтальная штриховка (полоски), сверху — короткие
-     круговые полоски. Вращение: слабый холостой ход + скролл.
+     вырезаны трапециевидные впадины => зубья (плоская вершина,
+     боковые грани почти вертикальные). Верх чистый. На боку —
+     редкие короткие вертикальные полоски (до 3 рядом, без
+     штриховки). Без холостого вращения; видна в рамке (обрезана).
      ========================================================= */
   let gearState = null;
   let gearAngle = 0, gearVel = 0;
 
-  function makeStripesTex(THREE){
-    const c = document.createElement('canvas'); c.width = 8; c.height = 32;
-    const x = c.getContext('2d');
-    x.fillStyle = '#dfd8c8'; x.fillRect(0,0,8,32);
-    x.fillStyle = '#161413';
-    for (let y=0; y<32; y+=8){ x.fillRect(0,y,8,2); }
-    const t = new THREE.CanvasTexture(c);
-    t.wrapS = t.wrapT = THREE.RepeatWrapping; t.repeat.set(1,6);
+  function makeVerticalStripesTex(THREE){
+    const W=512, H=128;
+    const c=document.createElement('canvas'); c.width=W; c.height=H;
+    const x=c.getContext('2d');
+    x.fillStyle='#dfd8c8'; x.fillRect(0,0,W,H);
+    x.strokeStyle='#161413'; x.lineWidth=2;
+    let rng=12345; const rnd=()=>{ rng=(rng*1103515245+12345)&0x7fffffff; return rng/0x7fffffff; };
+    let px=12;
+    while(px < W-4){
+      const cluster=1+Math.floor(rnd()*3);          // 1..3 рядом, не более
+      for(let k=0;k<cluster && px<W;k++){
+        const h=12+rnd()*46;                         // короткие, разной длины
+        const y=rnd()*(H-h);                          // на разной высоте
+        x.beginPath(); x.moveTo(px,y); x.lineTo(px,y+h); x.stroke();
+        px+=3;
+      }
+      px+=24+rnd()*64;                               // редко
+    }
+    const t=new THREE.CanvasTexture(c);
+    t.wrapS=t.wrapT=THREE.RepeatWrapping; t.repeat.set(2,1);
     return t;
   }
-  function makeRingsTex(THREE){
-    const c = document.createElement('canvas'); c.width = c.height = 256;
-    const x = c.getContext('2d');
-    x.fillStyle = '#f6f2e9'; x.fillRect(0,0,256,256);
-    x.strokeStyle = '#161413'; x.lineWidth = 1.8;
-    for (let r=14; r<=72; r+=14){ x.beginPath(); x.arc(128,128,r,0,Math.PI*2); x.stroke(); }
-    const t = new THREE.CanvasTexture(c); t.anisotropy = 4; return t;
-  }
   function gearShape(THREE, teeth, Rroot, Rtip){
-    const s = new THREE.Shape();
-    const step = Math.PI*2/teeth, tw = step*0.44, g = step*0.05;
-    const P = (r,ang) => [r*Math.cos(ang), r*Math.sin(ang)];
-    for (let i=0;i<teeth;i++){
-      const a = i*step;
-      if (i===0) s.moveTo(...P(Rroot, a));
-      s.lineTo(...P(Rtip, a+g));
-      s.lineTo(...P(Rtip, a+tw-g));
-      s.lineTo(...P(Rroot, a+tw));
+    const s=new THREE.Shape();
+    const step=Math.PI*2/teeth;
+    const base=step*0.50, top=step*0.42, taper=(base-top)/2; // 0.04*step — почти прямоугольные
+    const P=(r,ang)=>[r*Math.cos(ang), r*Math.sin(ang)];
+    for(let i=0;i<teeth;i++){
+      const a=i*step;
+      if(i===0) s.moveTo(...P(Rroot, a));
+      s.lineTo(...P(Rtip, a+taper));
+      s.lineTo(...P(Rtip, a+taper+top));
+      s.lineTo(...P(Rroot, a+base));
     }
     s.closePath();
     return s;
@@ -74,21 +80,21 @@
   function initGear(){
     const THREE = window.THREE;
     if (!THREE || !gearEl || gearState) return;
-    const w = gearEl.clientWidth || 540, h = gearEl.clientHeight || 405;
+    const w = gearEl.clientWidth || 540, h = gearEl.clientHeight || 450;
     const scene = new THREE.Scene();
-    const camera = new THREE.PerspectiveCamera(34, w/h, 0.1, 100);
-    camera.position.set(0, 2.15, 4.7); camera.lookAt(0, -0.05, 0);
+    const camera = new THREE.PerspectiveCamera(36, w/h, 0.1, 100);
+    camera.position.set(0, 1.7, 3.35); camera.lookAt(0, 0, 0);   // крупнее => обрезается рамкой
     const renderer = new THREE.WebGLRenderer({ alpha:true, antialias:true });
     renderer.setPixelRatio(Math.min(window.devicePixelRatio||1, 2));
     renderer.setSize(w, h); renderer.setClearColor(0x000000, 0);
     gearEl.appendChild(renderer.domElement);
 
-    const teeth = 22, Rroot = 2.0, Rtip = 2.55, H = 0.78;
+    const teeth = 16, Rroot = 2.0, Rtip = 2.5, H = 0.8;
     const shape = gearShape(THREE, teeth, Rroot, Rtip);
     const geo = new THREE.ExtrudeGeometry(shape, { depth:H, bevelEnabled:false, steps:1, curveSegments:1 });
     geo.rotateX(-Math.PI/2); geo.center();
-    const capsMat = new THREE.MeshBasicMaterial({ map: makeRingsTex(THREE), color: 0xffffff });
-    const sideMat = new THREE.MeshBasicMaterial({ map: makeStripesTex(THREE), color: 0xffffff });
+    const capsMat = new THREE.MeshBasicMaterial({ color: 0xf6f2e9 });             // верх чистый
+    const sideMat = new THREE.MeshBasicMaterial({ map: makeVerticalStripesTex(THREE), color: 0xffffff });
     const mesh = new THREE.Mesh(geo, [capsMat, sideMat]);
     scene.add(mesh);
     const edges = new THREE.EdgesGeometry(geo, 1);
@@ -100,7 +106,7 @@
   }
   function gearLoop(){
     if (!gearState) return;
-    gearAngle += 0.006 + gearVel;
+    gearAngle += gearVel;                // только от скролла, без холостого хода
     gearVel *= 0.92;
     gearState.mesh.rotation.y = gearAngle;
     gearState.lines.rotation.y = gearAngle;

@@ -134,8 +134,7 @@ const BIO = {
   photo: 'assets/web/me.webp',
   facts: [
     { ru:'18 лет', en:'18 years old' },
-    { ru:'Живу в Днепре', en:'Based in Dnipro' },
-    { ru:'Принимаю к оплате: рубли, евро, криптовалюту', en:'Accept payment: rubles, euros, crypto' },
+    { ru:'Принимается криптовалюта', en:'Cryptocurrency accepted' },
     { ru:'Делаю Minecraft-моды и плагины с 12 лет', en:'Building Minecraft mods & plugins since age 12' },
     { ru:'50 Minecraft-проектов', en:'50 Minecraft projects shipped' },
     { ru:'Более 10 веб-сайтов', en:'10+ websites built' },
