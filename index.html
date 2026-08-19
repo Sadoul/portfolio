@@ -59,15 +59,11 @@
 
 <main class="stage">
 
-  <!-- ГЕРОЙ-БАРАБАН: прямозубая шестерня 3/4, крутится (слабо холостым, сильно при скролле) -->
-  <section class="hero" aria-label="Барабан-навигация">
-    <button class="gear-arrow gear-arrow--left" id="gearArrowL" aria-label="Назад">
-      <svg viewBox="0 0 40 40"><path d="M27 7 L13 20 L27 33" class="ink-stroke"/></svg>
-    </button>
-    <div class="hero-gear" id="heroGear" aria-hidden="true"></div>
-    <button class="gear-arrow gear-arrow--right" id="gearArrowR" aria-label="Вперёд">
-      <svg viewBox="0 0 40 40"><path d="M13 7 L27 20 L13 33" class="ink-stroke"/></svg>
-    </button>
+  <!-- 3D-МЕХАНИЗМ: большая шестерня + деревянные стрелки (Three.js).
+       Стрелки — часть 3D-сцены: клик по ним листает вкладки и
+       поворачивает шестерню на 30° в нужную сторону. -->
+  <section class="hero" aria-label="Механизм-навигация">
+    <div class="hero-mech" id="heroMech" aria-hidden="true"></div>
   </section>
 
   <nav class="tabs" id="tabs" aria-label="Разделы">
@@ -101,6 +97,7 @@
 
 <script src="https://unpkg.com/three@0.137.0/build/three.min.js"></script>
 <script src="js/data.js"></script>
+<script src="js/mechanism.js"></script>
 <script src="js/nav.js"></script>
 </body>
 </html>
