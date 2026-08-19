@@ -81,7 +81,7 @@
   function gearShape(THREE, teeth, Rroot, Rtip){
     const s=new THREE.Shape();
     const step=Math.PI*2/teeth;
-    const base=step*0.50, top=step*0.42, taper=(base-top)/2; // почти прямоугольные зубья
+    const base=step*0.50, top=step*0.46, taper=(base-top)/2; // широкая плоская вершина, почти прямоугольные, явные трапеции
     const P=(r,ang)=>[r*Math.cos(ang), r*Math.sin(ang)];
     for(let i=0;i<teeth;i++){
       const a=i*step;
@@ -119,7 +119,7 @@
     const w=heroEl.clientWidth||620, h=heroEl.clientHeight||560;
     const scene=new THREE.Scene();
     const camera=new THREE.PerspectiveCamera(50, w/h, 0.1, 100);
-    camera.position.set(0, 1.5, 5.0); camera.lookAt(0,0,0);
+    camera.position.set(0, 1.8, 5.3); camera.lookAt(0,0,0);
     const renderer=new THREE.WebGLRenderer({alpha:true, antialias:true});
     renderer.setPixelRatio(Math.min(window.devicePixelRatio||1,2));
     renderer.setSize(w,h); renderer.setClearColor(0x000000,0);
@@ -127,11 +127,11 @@
 
     const paper=()=>new THREE.MeshBasicMaterial({color:0xf6f2e9});
     const inkMat=()=>new THREE.MeshBasicMaterial({color:0x161413});
-    const gearGroup=new THREE.Group();
-    scene.add(gearGroup);
+    const mech=new THREE.Group(); scene.add(mech);       // весь механизм (масштабируем вместе)
 
-    // главная шестерня
-    const teeth=16, Rroot=1.55, Rtip=1.95, H=0.62;
+    // главная шестерня + её рёбра + рамки-вкладки — в одной группе (вращаются вместе)
+    const gearGroup=new THREE.Group(); mech.add(gearGroup);
+    const teeth=16, Rroot=1.4, Rtip=1.65, H=0.55;
     const shape=gearShape(THREE, teeth, Rroot, Rtip);
     const geo=new THREE.ExtrudeGeometry(shape, {depth:H, bevelEnabled:false, steps:1, curveSegments:1});
     geo.rotateX(-Math.PI/2); geo.center();
@@ -142,53 +142,51 @@
     const lines=new THREE.LineSegments(edges, new THREE.LineBasicMaterial({color:0x161413}));
     gearGroup.add(lines);
 
-    // 4 текстовые рамки-вкладки на ободе (вращаются вместе с шестернёй)
-    const rLabel=Rtip+0.28, slot=Math.PI/2;
+    // 4 текстовые рамки-вкладки, прижаты к ободу (depthTest => задние скрыты за шестернёй, без X-ray)
+    const rLabel=Rtip+0.03, slot=Math.PI/2;
     const labelMeshes=[];
     for(let i=0;i<ACTIVE.length;i++){
       const th=i*slot;
-      const mat=new THREE.MeshBasicMaterial({transparent:true, side:THREE.DoubleSide, depthTest:false});
-      const lab=new THREE.Mesh(new THREE.PlaneGeometry(1.5,0.5), mat);
+      const mat=new THREE.MeshBasicMaterial({transparent:true, side:THREE.DoubleSide, depthTest:true, depthWrite:false});
+      const lab=new THREE.Mesh(new THREE.PlaneGeometry(1.35,0.45), mat);
       lab.position.set(rLabel*Math.sin(th), 0, rLabel*Math.cos(th));
       lab.rotation.y = th;
-      lab.renderOrder = 5;
+      lab.renderOrder = 3;
       gearGroup.add(lab);
       labelMeshes.push(lab);
     }
 
-    // малая зацепленная шестерёнка (вращается в обратную сторону)
-    const sTeeth=12, sRroot=0.85, sRtip=1.1, sH=0.62;
+    // малая зацепленная шестерёнка (зуб в зазор, не в зуб): расстояние + фаза
+    const sTeeth=12, sRroot=0.45, sRtip=0.6, sH=0.55;
+    const D = Rtip + sRroot + 0.04;                       // зазор: вершина главной < корень малой
     const sShape=gearShape(THREE, sTeeth, sRroot, sRtip);
     const sGeo=new THREE.ExtrudeGeometry(sShape, {depth:sH, bevelEnabled:false, steps:1, curveSegments:1});
     sGeo.rotateX(-Math.PI/2); sGeo.center();
+    const smallGroup=new THREE.Group(); smallGroup.position.set(D, 0, 0); mech.add(smallGroup);
     const smallGear=new THREE.Mesh(sGeo, [paper(), new THREE.MeshBasicMaterial({map:makeVerticalStripesTex(THREE), color:0xffffff})]);
-    smallGear.position.set(Rtip+sRroot-0.05, 0, 0);
-    scene.add(smallGear);
+    smallGroup.add(smallGear);
     const sEdges=new THREE.EdgesGeometry(sGeo,1);
     const sLines=new THREE.LineSegments(sEdges, new THREE.LineBasicMaterial({color:0x161413}));
-    sLines.position.copy(smallGear.position);
-    scene.add(sLines);
+    smallGroup.add(sLines);
 
-    // маятник (часовой механизм)
-    const pend=new THREE.Group(); pend.position.set(-(Rtip+1.25), 1.35, 0);
-    const rod=new THREE.Mesh(new THREE.CylinderGeometry(0.035,0.035,1.7,8), inkMat());
-    rod.position.set(0,-0.85,0); pend.add(rod);
-    const bob=new THREE.Mesh(new THREE.SphereGeometry(0.2,16,12), inkMat());
-    bob.position.set(0,-1.7,0); pend.add(bob);
-    const mount=new THREE.Mesh(new THREE.CylinderGeometry(0.12,0.12,0.12,16), inkMat());
-    pend.add(mount);
-    scene.add(pend);
+    // маховик (гладкое spoked колесо слева)
+    const flyGroup=new THREE.Group(); flyGroup.position.set(-(Rtip+0.72), 0, 0); mech.add(flyGroup);
+    const fRim=new THREE.Mesh(new THREE.TorusGeometry(0.6,0.1,8,40), inkMat()); flyGroup.add(fRim);
+    for(let s=0;s<6;s++){ const sp=new THREE.Mesh(new THREE.BoxGeometry(1.15,0.07,0.07), inkMat()); sp.rotation.y=s*(Math.PI/3); flyGroup.add(sp); }
+    const fHub=new THREE.Mesh(new THREE.CylinderGeometry(0.13,0.13,0.16,16), inkMat()); flyGroup.add(fHub);
 
-    gearState={renderer,scene,camera,mesh,lines,gearGroup,smallGear,sLines,pend,labelMeshes};
+    mech.scale.set(0.82,0.82,0.82);
+    gearState={renderer,scene,camera,gearGroup,smallGroup,flyGroup,labelMeshes, sPhase:0.131};
     buildLabels(THREE);
   }
   function tick(now){
     heroAngle += (heroTarget - heroAngle)*0.10;
     if(gearState){
       gearState.gearGroup.rotation.y = heroAngle;
-      gearState.smallGear.rotation.y = -heroAngle * (16/12);
-      gearState.sLines.rotation.y = -heroAngle * (16/12);
-      gearState.pend.rotation.z = Math.sin((now||0)*0.0018) * 0.42;
+      // малая шестерёнка: обратное вращение с передаточным числом + фаза зацепления (зуб в зазор)
+      gearState.smallGroup.rotation.y = -heroAngle * (16/12) + gearState.sPhase;
+      // маховик (как бы на ремне) — крутится в ту же сторону быстрее
+      gearState.flyGroup.rotation.y = heroAngle * 1.8;
       gearState.renderer.render(gearState.scene, gearState.camera);
     }
     sideAngle += 0.09 + sideVel;

@@ -92,18 +92,32 @@ body{
 }
 .hero-gear canvas{ display:block; width:100% !important; height:100% !important; }
 
-/* стрелки у шестерёнки */
+/* деревянные стрелки у шестерёнки (зерно + гвозди, ч/б) */
 .gear-arrow{
-  background:var(--paper); border:var(--stroke) solid var(--ink);
-  width:46px; height:46px; border-radius:50%;
+  position:relative;
+  width:54px; height:54px; border-radius:8px;
+  border:2px solid var(--ink);
+  background:var(--paper);
+  background-image: repeating-linear-gradient(2deg,
+    rgba(22,20,19,.12) 0 1px, transparent 1px 4px,
+    rgba(22,20,19,.06) 4px 5px, transparent 5px 9px);
   display:grid; place-items:center; cursor:pointer; flex:0 0 auto;
-  box-shadow:3px 3px 0 rgba(22,20,19,.18);
+  box-shadow:3px 3px 0 rgba(22,20,19,.2);
   transition: transform .15s ease, box-shadow .15s ease; z-index:3;
 }
-.gear-arrow:hover{ transform:translateY(-1px); box-shadow:4px 4px 0 rgba(22,20,19,.25); }
+.gear-arrow::before{            /* гвозди по углам */
+  content:""; position:absolute; inset:0; pointer-events:none;
+  background:
+    radial-gradient(circle 2.2px at 5px 5px, var(--ink) 98%, transparent 100%),
+    radial-gradient(circle 2.2px at calc(100% - 5px) 5px, var(--ink) 98%, transparent 100%),
+    radial-gradient(circle 2.2px at 5px calc(100% - 5px), var(--ink) 98%, transparent 100%),
+    radial-gradient(circle 2.2px at calc(100% - 5px) calc(100% - 5px), var(--ink) 98%, transparent 100%);
+  background-repeat:no-repeat;
+}
+.gear-arrow:hover{ transform:translateY(-2px); box-shadow:5px 5px 0 rgba(22,20,19,.28); }
 .gear-arrow:active{ transform:translate(1px,1px); }
-.gear-arrow svg{ width:22px; height:22px; }
-@media (max-width:560px){ .gear-arrow{ width:38px; height:38px; } .gear-arrow svg{ width:18px; height:18px; } }
+.gear-arrow svg{ width:24px; height:24px; position:relative; z-index:1; }
+@media (max-width:560px){ .gear-arrow{ width:46px; height:46px; } .gear-arrow svg{ width:20px; height:20px; } }
 
 /* боковая декоративная шестерёнка в позиции сайта (медленная) */
 .side-gear{
