@@ -93,42 +93,107 @@
     s.closePath();
     return s;
   }
+  function makeLabelTex(THREE, text){
+    const c=document.createElement('canvas'); c.width=512; c.height=160;
+    const x=c.getContext('2d');
+    x.clearRect(0,0,512,160);
+    const rr=(X,Y,W,H,R)=>{ x.beginPath(); x.moveTo(X+R,Y); x.arcTo(X+W,Y,X+W,Y+H,R); x.arcTo(X+W,Y+H,X,Y+H,R); x.arcTo(X,Y+H,X,Y,R); x.arcTo(X,Y,X+W,Y,R); x.closePath(); };
+    x.fillStyle='rgba(246,242,233,0.94)'; rr(10,10,492,140,22); x.fill();
+    x.strokeStyle='#161413'; x.lineWidth=6; rr(10,10,492,140,22); x.stroke();
+    x.fillStyle='#161413'; x.font='700 58px "Space Grotesk", sans-serif'; x.textAlign='center'; x.textBaseline='middle';
+    x.fillText(text, 256, 82);
+    const t=new THREE.CanvasTexture(c); t.anisotropy=4; return t;
+  }
+  function buildLabels(THREE){
+    if(!gearState || !window.THREE) return;
+    const T=window.THREE;
+    gearState.labelMeshes.forEach((m,i)=>{
+      const tex=makeLabelTex(T, L(ACTIVE[i].label));
+      if(m.material.map) m.material.map.dispose();
+      m.material.map=tex; m.material.needsUpdate=true;
+    });
+  }
   function initGear(){
     const THREE=window.THREE;
     if(!THREE || !heroEl || gearState) return;
-    const w=heroEl.clientWidth||600, h=heroEl.clientHeight||500;
+    const w=heroEl.clientWidth||620, h=heroEl.clientHeight||560;
     const scene=new THREE.Scene();
     const camera=new THREE.PerspectiveCamera(50, w/h, 0.1, 100);
-    camera.position.set(0, 1.3, 4.8); camera.lookAt(0,0,0);   // ниже + видна целиком (без обрезки)
+    camera.position.set(0, 1.5, 5.0); camera.lookAt(0,0,0);
     const renderer=new THREE.WebGLRenderer({alpha:true, antialias:true});
     renderer.setPixelRatio(Math.min(window.devicePixelRatio||1,2));
     renderer.setSize(w,h); renderer.setClearColor(0x000000,0);
     heroEl.appendChild(renderer.domElement);
-    const teeth=16, Rroot=1.6, Rtip=2.0, H=0.66;
+
+    const paper=()=>new THREE.MeshBasicMaterial({color:0xf6f2e9});
+    const inkMat=()=>new THREE.MeshBasicMaterial({color:0x161413});
+    const gearGroup=new THREE.Group();
+    scene.add(gearGroup);
+
+    // главная шестерня
+    const teeth=16, Rroot=1.55, Rtip=1.95, H=0.62;
     const shape=gearShape(THREE, teeth, Rroot, Rtip);
     const geo=new THREE.ExtrudeGeometry(shape, {depth:H, bevelEnabled:false, steps:1, curveSegments:1});
     geo.rotateX(-Math.PI/2); geo.center();
-    const capsMat=new THREE.MeshBasicMaterial({color:0xf6f2e9});               // верх чистый
     const sideMat=new THREE.MeshBasicMaterial({map:makeVerticalStripesTex(THREE), color:0xffffff});
-    const mesh=new THREE.Mesh(geo, [capsMat, sideMat]);
-    scene.add(mesh);
+    const mesh=new THREE.Mesh(geo, [paper(), sideMat]);
+    gearGroup.add(mesh);
     const edges=new THREE.EdgesGeometry(geo, 1);
     const lines=new THREE.LineSegments(edges, new THREE.LineBasicMaterial({color:0x161413}));
-    scene.add(lines);
-    gearState={renderer,scene,camera,mesh,lines};
+    gearGroup.add(lines);
+
+    // 4 текстовые рамки-вкладки на ободе (вращаются вместе с шестернёй)
+    const rLabel=Rtip+0.28, slot=Math.PI/2;
+    const labelMeshes=[];
+    for(let i=0;i<ACTIVE.length;i++){
+      const th=i*slot;
+      const mat=new THREE.MeshBasicMaterial({transparent:true, side:THREE.DoubleSide, depthTest:false});
+      const lab=new THREE.Mesh(new THREE.PlaneGeometry(1.5,0.5), mat);
+      lab.position.set(rLabel*Math.sin(th), 0, rLabel*Math.cos(th));
+      lab.rotation.y = th;
+      lab.renderOrder = 5;
+      gearGroup.add(lab);
+      labelMeshes.push(lab);
+    }
+
+    // малая зацепленная шестерёнка (вращается в обратную сторону)
+    const sTeeth=12, sRroot=0.85, sRtip=1.1, sH=0.62;
+    const sShape=gearShape(THREE, sTeeth, sRroot, sRtip);
+    const sGeo=new THREE.ExtrudeGeometry(sShape, {depth:sH, bevelEnabled:false, steps:1, curveSegments:1});
+    sGeo.rotateX(-Math.PI/2); sGeo.center();
+    const smallGear=new THREE.Mesh(sGeo, [paper(), new THREE.MeshBasicMaterial({map:makeVerticalStripesTex(THREE), color:0xffffff})]);
+    smallGear.position.set(Rtip+sRroot-0.05, 0, 0);
+    scene.add(smallGear);
+    const sEdges=new THREE.EdgesGeometry(sGeo,1);
+    const sLines=new THREE.LineSegments(sEdges, new THREE.LineBasicMaterial({color:0x161413}));
+    sLines.position.copy(smallGear.position);
+    scene.add(sLines);
+
+    // маятник (часовой механизм)
+    const pend=new THREE.Group(); pend.position.set(-(Rtip+1.25), 1.35, 0);
+    const rod=new THREE.Mesh(new THREE.CylinderGeometry(0.035,0.035,1.7,8), inkMat());
+    rod.position.set(0,-0.85,0); pend.add(rod);
+    const bob=new THREE.Mesh(new THREE.SphereGeometry(0.2,16,12), inkMat());
+    bob.position.set(0,-1.7,0); pend.add(bob);
+    const mount=new THREE.Mesh(new THREE.CylinderGeometry(0.12,0.12,0.12,16), inkMat());
+    pend.add(mount);
+    scene.add(pend);
+
+    gearState={renderer,scene,camera,mesh,lines,gearGroup,smallGear,sLines,pend,labelMeshes};
+    buildLabels(THREE);
   }
-  function tick(){
-    // hero: мягко к целевому углу (меняется только при смене вкладок)
-    heroAngle += (heroTarget - heroAngle)*0.12;
+  function tick(now){
+    heroAngle += (heroTarget - heroAngle)*0.10;
     if(gearState){
-      gearState.mesh.rotation.y = heroAngle;
-      gearState.lines.rotation.y = heroAngle;
+      gearState.gearGroup.rotation.y = heroAngle;
+      gearState.smallGear.rotation.y = -heroAngle * (16/12);
+      gearState.sLines.rotation.y = -heroAngle * (16/12);
+      gearState.pend.rotation.z = Math.sin((now||0)*0.0018) * 0.42;
       gearState.renderer.render(gearState.scene, gearState.camera);
     }
-    // боковая шестерёнка: слабый холостой ход + инерция от скролла
-    sideAngle += 0.18 + sideVel;
+    sideAngle += 0.09 + sideVel;
     sideVel *= 0.9;
-    if(sideGearEl) sideGearEl.style.transform = `translateY(-50%) rotate(${sideAngle.toFixed(2)}deg)`;
+    if(sideGearEl) sideGearEl.style.transform = `rotate(${sideAngle.toFixed(2)}deg)`;
     requestAnimationFrame(tick);
   }
 
@@ -219,10 +284,11 @@
 
   function goTo(i){
     if (i === current) return;
-    const dir = (((i - current) + N) % N <= N/2) ? 1 : -1; // кратчайшее направление
+    const diff = ((i - current) + N) % N;
+    const steps = diff <= N/2 ? diff : diff - N;   // кратчайший путь в шагах
     current = clamp(i, N);
     applyTabs(); renderContent();
-    heroTarget += dir * 0.32;   // мягкий поворот hero-шестерни при смене вкладки
+    heroTarget -= steps * (Math.PI/2);   // 4 вкладки -> π/2 на шаг; рамки вращаются с шестернёй
   }
   const next = () => goTo((current+1)%N);
   const prev = () => goTo((current-1+N)%N);
@@ -233,6 +299,7 @@
     langSw.querySelectorAll('.lang-btn').forEach(b => b.setAttribute('aria-pressed', b.dataset.lang === l ? 'true':'false'));
     tabButtons.forEach((b,i)=> b.innerHTML = tabHTML(L(ACTIVE[i].label)));
     applyTabs(); renderContent();
+    buildLabels();   // обновить текст на 3D-рамках-вкладках
   }
 
   const SWAP_TEXT = { ru:'Всё, погналиииии!', en:'Alright, let’s goooo!' };
@@ -273,6 +340,10 @@
   });
   arrowL.addEventListener('click', prev);
   arrowR.addEventListener('click', next);
+  const gAL = document.getElementById('gearArrowL');
+  const gAR = document.getElementById('gearArrowR');
+  if(gAL) gAL.addEventListener('click', prev);
+  if(gAR) gAR.addEventListener('click', next);
   langSw.querySelectorAll('.lang-btn').forEach(b => b.addEventListener('click', () => setLang(b.dataset.lang)));
 
   /* галерея: переключение стрелками */

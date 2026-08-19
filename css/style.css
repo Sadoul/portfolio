@@ -82,29 +82,41 @@ body{
 .hero{
   position:relative;
   display:flex; align-items:center; justify-content:center;
+  gap:14px;
   margin:18px auto 0; padding:20px 0 10px;
 }
 .hero-gear{
-  width:min(82vw, 600px);
+  width:min(82vw, 560px);
   aspect-ratio:360/300;
   position:relative;
 }
 .hero-gear canvas{ display:block; width:100% !important; height:100% !important; }
 
-/* боковая декоративная шестерёнка (половина за краем, ×2.5) */
+/* стрелки у шестерёнки */
+.gear-arrow{
+  background:var(--paper); border:var(--stroke) solid var(--ink);
+  width:46px; height:46px; border-radius:50%;
+  display:grid; place-items:center; cursor:pointer; flex:0 0 auto;
+  box-shadow:3px 3px 0 rgba(22,20,19,.18);
+  transition: transform .15s ease, box-shadow .15s ease; z-index:3;
+}
+.gear-arrow:hover{ transform:translateY(-1px); box-shadow:4px 4px 0 rgba(22,20,19,.25); }
+.gear-arrow:active{ transform:translate(1px,1px); }
+.gear-arrow svg{ width:22px; height:22px; }
+@media (max-width:560px){ .gear-arrow{ width:38px; height:38px; } .gear-arrow svg{ width:18px; height:18px; } }
+
+/* боковая декоративная шестерёнка в позиции сайта (медленная) */
 .side-gear{
-  position:fixed;
-  right:calc(230px * -0.5);
-  top:50%;
-  width:230px; height:230px;
-  transform:translateY(-50%) rotate(0deg);
+  position:absolute;
+  top:-30px; right:-40px;
+  width:170px; height:170px;
   pointer-events:none;
-  opacity:.4;
+  opacity:.3;
   z-index:0;
   will-change:transform;
 }
 .side-gear svg{ width:100%; height:100%; display:block; overflow:visible; filter:url(#rough-hard); }
-@media (max-width:720px){ .side-gear{ width:150px; height:150px; right:calc(150px * -0.5); opacity:.32; } }
+@media (max-width:720px){ .side-gear{ width:120px; height:120px; top:-20px; right:-25px; opacity:.24; } }
 @media (max-width:560px){ .hero{ margin-top:10px; } }
 
 /* =========================================================
