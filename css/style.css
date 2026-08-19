@@ -85,14 +85,9 @@ body{
   margin:18px auto 0; padding:20px 0 10px;
 }
 .hero-gear{
-  width:min(78vw, 560px);
+  width:min(82vw, 600px);
   aspect-ratio:360/300;
   position:relative;
-  border:2px solid var(--ink);
-  border-radius:18px;
-  background:var(--paper-2);
-  overflow:hidden;            /* рамка: шестерёнка видна не целиком */
-  box-shadow:5px 7px 0 rgba(22,20,19,.18);
 }
 .hero-gear canvas{ display:block; width:100% !important; height:100% !important; }
 @media (max-width:560px){ .hero{ margin-top:10px; } }

@@ -80,10 +80,10 @@
   function initGear(){
     const THREE = window.THREE;
     if (!THREE || !gearEl || gearState) return;
-    const w = gearEl.clientWidth || 540, h = gearEl.clientHeight || 450;
+    const w = gearEl.clientWidth || 600, h = gearEl.clientHeight || 500;
     const scene = new THREE.Scene();
-    const camera = new THREE.PerspectiveCamera(36, w/h, 0.1, 100);
-    camera.position.set(0, 1.7, 3.35); camera.lookAt(0, 0, 0);   // крупнее => обрезается рамкой
+    const camera = new THREE.PerspectiveCamera(50, w/h, 0.1, 100);
+    camera.position.set(0, 1.4, 4.4); camera.lookAt(0, 0, 0);   // чуть ниже, менее изометрично; видна целиком
     const renderer = new THREE.WebGLRenderer({ alpha:true, antialias:true });
     renderer.setPixelRatio(Math.min(window.devicePixelRatio||1, 2));
     renderer.setSize(w, h); renderer.setClearColor(0x000000, 0);
@@ -286,7 +286,7 @@
     clearTimeout(rT);
     rT = setTimeout(() => {
       if (gearState && gearEl){
-        const w = gearEl.clientWidth || 540, h = gearEl.clientHeight || 405;
+        const w = gearEl.clientWidth || 600, h = gearEl.clientHeight || 500;
         gearState.renderer.setSize(w, h);
         gearState.camera.aspect = w/h;
         gearState.camera.updateProjectionMatrix();
