@@ -32,7 +32,12 @@ body{
   background-size: 220px 220px, 260px 260px, 180px 180px, 300px 300px;
   min-height:100vh; overflow-x:hidden;
   -webkit-font-smoothing:antialiased;
+  /* система координат для приклеенного к странице декора
+     (.side-gear и .tab-decor): они тянутся на всю высоту документа */
+  position:relative;
 }
+/* пока открыт полноэкранный просмотр — страница под ним не скроллится */
+body.lb-lock{ overflow:hidden; }
 
 .filters{ position:absolute; width:0; height:0; pointer-events:none; }
 .ink-stroke{ fill:none; stroke:var(--ink); stroke-width:2.4; stroke-linecap:round; stroke-linejoin:round; }
@@ -40,10 +45,18 @@ body{
 /* =========================================================
    Topbar
    ========================================================= */
+/* Шапка вынута из потока и лежит поверх сцены. Так механизм начинается
+   у самой кромки документа: вал и выхлопная труба уходят за верх
+   страницы, а не обрываются под шапкой. Фона у шапки нет, поэтому она
+   ничего не закрывает; клики сквозь неё проходят в canvas — ловят их
+   только сам логотип и переключатель языка. */
 .topbar{
   display:flex; align-items:center; justify-content:space-between;
-  padding:18px 30px 6px; position:relative; z-index:5; gap:14px;
+  padding:18px 30px 6px; gap:14px;
+  position:absolute; top:0; left:0; right:0; z-index:5;
+  pointer-events:none;
 }
+.brand, .lang{ pointer-events:auto; }
 .brand{ display:flex; align-items:center; gap:12px; }
 .avatar{
   width:44px; height:44px; border-radius:50%;
@@ -82,7 +95,7 @@ body{
 .hero{
   position:relative;
   display:flex; align-items:center; justify-content:center;
-  margin:10px auto 0; padding:6px 0 0;
+  margin:0 auto; padding:0;      /* вплотную к верху: шапка вне потока */
 }
 .hero-mech{
   width:min(96vw, 900px);
@@ -114,12 +127,12 @@ body{
 @media (max-width:720px){
   .side-gear{ width:120px; height:120px; top:250px; right:-30px; opacity:.24; }
 }
-@media (max-width:560px){ .hero{ margin-top:10px; } }
+@media (max-width:560px){ .hero{ margin-top:0; } }
 
 /* =========================================================
    Stage / tabs
    ========================================================= */
-.stage{ max-width:1180px; margin:0 auto; padding:10px 22px 80px; position:relative; z-index:2; }
+.stage{ max-width:1180px; margin:0 auto; padding:0 22px 80px; position:relative; z-index:2; }
 
 /* Вкладки живут на шестерне (3D). Этот слой — настоящие кнопки для
    клавиатуры и скринридеров: геометрия внутри canvas им недоступна.
@@ -179,14 +192,27 @@ body{
   position:relative; aspect-ratio:16/10; background:var(--paper-2);
   border-bottom:var(--stroke) solid var(--ink); display:grid; place-items:center; overflow:hidden;
 }
+.card .media{ cursor:zoom-in; }
 .card .media video,.card .media img{ width:100%; height:100%; object-fit:cover; display:block; filter:none; }
-.card .media .ph{ display:flex; flex-direction:column; align-items:center; gap:8px; color:var(--muted); }
-.card .media .ph svg{ width:70px; height:70px; }
-.card .media .ph .ph-tag{ font-size:13px; letter-spacing:3px; text-transform:uppercase; }
-.card .media .badge{
-  position:absolute; top:10px; left:10px; font-size:12px; letter-spacing:2px; text-transform:uppercase;
-  background:var(--paper); border:1.6px solid var(--ink); border-radius:6px; padding:1px 8px;
+.card .media:focus-visible{ outline:3px solid var(--ink); outline-offset:-3px; }
+
+/* подсказка «откроется во весь экран» — уголки в углу кадра */
+.media-zoom{
+  position:absolute; top:9px; right:9px; width:26px; height:26px;
+  display:grid; place-items:center; color:var(--ink);
+  background:var(--paper); border:1.6px solid var(--ink); border-radius:7px;
+  box-shadow:2px 2px 0 rgba(22,20,19,.18);
+  opacity:0; transform:translateY(-3px);
+  transition: opacity .2s ease, transform .2s ease;
 }
+.media-zoom svg{ width:14px; height:14px; display:block; }
+.card:hover .media-zoom,
+.card:focus-within .media-zoom{ opacity:1; transform:translateY(0); }
+
+/* карточка без вложения: описание всегда открыто, скрывать нечего */
+.card--nomedia .body{ padding:18px 18px 18px; }
+.card--nomedia .desc{ max-height:none; opacity:1; margin:0 0 12px; }
+
 .card .body{ padding:14px 16px 16px; }
 .card .title{ font-family:var(--font-display); font-weight:700; font-size:22px; line-height:1.05; margin:0 0 6px; }
 .card .desc{
@@ -202,11 +228,12 @@ body{
 }
 .card .link.live{ color:var(--ink); }
 .card .link.live:hover{ background:var(--ink); color:var(--paper); }
-.card .link.disabled{ color:var(--muted-2); border-color:var(--muted-2); border-style:dashed; cursor:not-allowed; }
 
-/* галерея (несколько изображений + стрелки) */
-.gallery{ position:absolute; inset:0; }
-.gallery .gal-img{ position:absolute; inset:0; width:100%; height:100%; object-fit:cover; filter:none; }
+/* =========================================================
+   Галерея: кадр на всю площадь, стрелки по бокам, а номер
+   кадра показывают плоские виджеты внизу — по одному на кадр.
+   ========================================================= */
+.card .media .gal-img{ position:absolute; inset:0; width:100%; height:100%; object-fit:cover; }
 .gal-arrow{
   position:absolute; top:50%; transform:translateY(-50%);
   width:30px; height:30px; border-radius:50%;
@@ -218,11 +245,27 @@ body{
 }
 .gal-arrow:hover{ transform:translateY(-50%) scale(1.08); box-shadow:3px 3px 0 rgba(22,20,19,.26); }
 .gal-prev{ left:8px; } .gal-next{ right:8px; }
-.gal-count{
-  position:absolute; bottom:8px; right:8px;
-  background:var(--paper); border:1.6px solid var(--ink); border-radius:6px;
-  padding:1px 7px; font-size:12px; color:var(--ink); font-family:var(--font-body);
+
+/* виджеты-кадры: полоска на каждый кадр, активная залита и шире */
+.gal-dots{
+  position:absolute; left:0; right:0; bottom:9px;
+  display:flex; justify-content:center; align-items:center; gap:5px;
 }
+.gal-dot{
+  -webkit-appearance:none; appearance:none;
+  padding:5px 3px; margin:0; border:0; background:none; cursor:pointer;
+  display:block; line-height:0;
+}
+.gal-dot > span{
+  display:block; width:14px; height:6px; border-radius:3px;
+  border:1.6px solid var(--ink); background:var(--paper);
+  box-shadow:1.5px 1.5px 0 rgba(22,20,19,.2);
+  transition: width .26s cubic-bezier(.4,1.3,.5,1), background .2s ease;
+}
+.gal-dot.is-on > span{ width:30px; background:var(--ink); }
+.gal-dot:hover > span{ background:var(--paper-2); }
+.gal-dot.is-on:hover > span{ background:var(--ink-soft); }
+.gal-dot:focus-visible > span{ outline:2.5px solid var(--ink); outline-offset:2px; }
 
 /* =========================================================
    Биография
@@ -256,7 +299,6 @@ body{
 .bio-chip{ border:1.6px solid var(--ink); border-radius:8px; background:var(--paper); padding:3px 10px; font-size:14px; color:var(--ink-soft); box-shadow:2px 2px 0 rgba(22,20,19,.12); }
 
 /* иллюстрация (в духе whoisguilty) */
-.bio-wig{ display:block; width:min(240px,52vw); margin:36px auto 0; opacity:.96; }
 
 /* =========================================================
    Footer + кнопка «начать» (анимация в духе whoisguilty)
@@ -319,31 +361,47 @@ body{
 @media (max-width:560px){ .swap__text{ font-size:30px; } }
 
 /* =========================================================
-   Декор вкладок (js/decor.js): у каждого раздела свои детали
-   по краям — шестерёнки крутятся, ржавые трубы капают.
-   Фиксированный слой под контентом, клики не перехватывает.
+   Декор вкладок (js/decor.js): у каждого раздела свой набор
+   деталей в полях страницы — шестерёнки и вентили крутятся,
+   трубы ржавые.
+
+   Слой ПРИКЛЕЕН К СТРАНИЦЕ (position:absolute относительно body,
+   как .side-gear): детали уезжают вместе с контентом при скролле,
+   а не висят перед камерой. Кластеры разбросаны по высоте
+   документа — у каждой вкладки свои места.
    ========================================================= */
-.tab-decor{ position:fixed; inset:0; pointer-events:none; z-index:0; }
+.tab-decor{
+  position:absolute; inset:0;
+  pointer-events:none; z-index:0; overflow:hidden;
+}
 .dc-pane{
-  position:absolute; inset:0; opacity:0; transition:opacity .45s ease;
+  position:absolute; inset:0;
+  opacity:0; visibility:hidden;
+  transition: opacity .55s ease, visibility .55s;
   /* «поле» страницы — сколько места остаётся слева от текстовой колонки
      (.stage: max-width 1180 + padding 22). Декор живёт в поле и не
      наползает на текст, пока поле есть. */
   --gut: max(22px, calc((100vw - 1180px)/2 + 22px));
 }
-.dc-pane.is-on{ opacity:1; }
-.dc-pane svg{
-  position:absolute; overflow:visible;
-  stroke-linejoin:round;
-  opacity:.30;
-  filter:url(#rough-hard);
+.dc-pane.is-on{ opacity:1; visibility:visible; }
+
+/* кластер: место задаёт js (side + top по высоте страницы) */
+.dc-c{
+  position:absolute;
+  opacity:0; transform:translateY(10px);
+  transition: opacity .55s ease, transform .55s ease;
 }
-/* внутренний край упирается в край текстовой колонки: на широких
-   экранах пересечения с текстом нет вообще */
-.dc-pane .dc-l{ bottom:18px; width:250px; height:290px;
-                left:calc(var(--gut) - 250px); }
-.dc-pane .dc-r{ top:44%;     width:215px; height:280px;
-                left:calc(100% - var(--gut)); }
+.dc-pane.is-on .dc-c{ opacity:1; transform:translateY(0); }
+/* появляются по очереди — набор «собирается», а не мигает целиком */
+.dc-pane.is-on .dc-c:nth-child(2){ transition-delay:.07s; }
+.dc-pane.is-on .dc-c:nth-child(3){ transition-delay:.14s; }
+.dc-pane.is-on .dc-c:nth-child(4){ transition-delay:.21s; }
+
+.dc-svg{
+  position:absolute; left:0; top:0; width:100%; height:100%;
+  overflow:visible; stroke-linejoin:round;
+  opacity:.30; filter:url(#rough-hard);
+}
 
 /* Поля не хватает — декор уходит за край и остаётся лёгкой фактурой:
    текст рисуется поверх, но конкурировать за внимание он не должен. */
@@ -364,6 +422,26 @@ body{
   opacity:.26; filter:url(#rough-hard);
 }
 
+/* Сцена Minecraft: 3D-канвас в потоке, только на своей вкладке.
+   Не декор в полях, а часть раздела — поэтому по центру колонки и
+   на любой ширине экрана. */
+.mc-stage{
+  display:none; position:relative; z-index:1;
+  margin:0 auto 12px; max-width:620px;
+  /* Пропорция подогнана под то, что реально рисуется: сцена
+     вписывается по ШИРИНЕ, поэтому лишняя высота контейнера
+     оставалась пустой бумагой сверху (было 620/300 — 45px пустоты).
+     Снизу её не видно: ряд земли уходит за кадр. */
+  aspect-ratio:620/258;
+  opacity:0; transition:opacity .5s ease;
+}
+.mc-stage.is-on{ display:block; }
+.mc-stage.is-lit{ opacity:1; }
+.mc-stage canvas{ display:block; width:100%; height:100%; }
+@media (max-width:720px){
+  .mc-stage{ aspect-ratio:480/232; margin-bottom:10px; }
+}
+
 /* Поля страницы больше нет: боковые колонки пришлось бы либо загонять
    под текст, либо срезать почти целиком. Показываем полосу. */
 @media (max-width:1400px){
@@ -377,19 +455,6 @@ body{
 
 .dc-spin{ animation:dcSpin 26s linear infinite; transform-origin:0 0; }
 @keyframes dcSpin{ to{ transform:rotate(360deg); } }
-
-/* капля: набухает у среза, срывается, падает и гаснет */
-.dc-drip{
-  animation:dcDrip 4.4s cubic-bezier(.45,0,.9,.6) infinite;
-  transform-origin:50% 0;
-}
-@keyframes dcDrip{
-  0%,   58%{ transform:translateY(0) scale(.35); opacity:0; }
-  70%      { transform:translateY(0) scale(1);   opacity:.95; }
-  76%      { transform:translateY(2px) scale(1); opacity:.95; }
-  97%      { transform:translateY(var(--dc-fall,60px)) scale(.72); opacity:0; }
-  100%     { transform:translateY(var(--dc-fall,60px)) scale(.72); opacity:0; }
-}
 
 /* поршень: шток ходит в гильзе */
 .dc-piston{ animation:dcPiston 3.6s ease-in-out infinite; }
@@ -407,7 +472,97 @@ body{
   80%    { transform:rotate(44deg); }
 }
 
+/* блок Minecraft «висит в руке»: медленно всплывает и опускается */
+.dc-bob{ animation:dcBob 4.2s ease-in-out infinite; }
+@keyframes dcBob{
+  0%,100%{ transform:translateY(0); }
+  50%    { transform:translateY(-6px); }
+}
+
+/* рука Стива с киркой: замах и удар, ось в плече (задана в SVG) */
+.dc-swing{ animation:dcSwing 2.4s ease-in-out infinite; transform-origin:0 0; }
+@keyframes dcSwing{
+  0%     { transform:rotate(-6deg); }
+  30%    { transform:rotate(-58deg); }   /* замах */
+  44%    { transform:rotate(22deg); }    /* удар */
+  56%    { transform:rotate(10deg); }    /* отдача */
+  100%   { transform:rotate(-6deg); }
+}
+
 @media (prefers-reduced-motion: reduce){
-  .dc-spin, .dc-drip, .dc-piston, .dc-needle{ animation:none; }
-  .dc-drip{ opacity:.6; }
+  .dc-spin, .dc-piston, .dc-needle, .dc-bob, .dc-swing{ animation:none; }
+  .dc-c{ transition:none; transform:none; }
+}
+
+/* =========================================================
+   Полноэкранный просмотр вложений (lightbox): кадр целиком,
+   стрелки по бокам у галереи, крестик и ESC — закрыть.
+   ========================================================= */
+.lightbox{
+  position:fixed; inset:0; z-index:60;
+  display:none; place-items:center;
+  background:rgba(22,20,19,.88);
+  padding:clamp(14px, 4vw, 54px);
+  /* место снизу под виджеты-кадры */
+  padding-bottom:clamp(58px, 9vh, 96px);
+}
+.lightbox.is-on{ display:grid; animation:lbIn .22s ease both; }
+@keyframes lbIn{ from{ opacity:0; } to{ opacity:1; } }
+
+.lb-frame{
+  max-width:100%; max-height:100%;
+  display:grid; place-items:center;
+  border:2px solid var(--paper); border-radius:12px;
+  background:var(--ink); overflow:hidden;
+  box-shadow:0 18px 60px rgba(0,0,0,.5);
+  animation:lbPop .26s cubic-bezier(.2,.9,.3,1.1) both;
+}
+@keyframes lbPop{ from{ transform:scale(.96); } to{ transform:scale(1); } }
+.lb-media{
+  display:block; max-width:100%;
+  max-height:calc(100vh - clamp(90px, 17vh, 190px));
+  width:auto; height:auto; object-fit:contain;
+}
+
+.lb-close, .lb-arrow{
+  position:absolute; z-index:2;
+  border:2px solid var(--paper); border-radius:50%;
+  background:rgba(22,20,19,.6); color:var(--paper);
+  display:grid; place-items:center; cursor:pointer; padding:0;
+  transition: transform .15s ease, background .15s ease;
+}
+.lb-close:hover, .lb-arrow:hover{ background:var(--paper); color:var(--ink); transform:scale(1.08); }
+.lb-close:focus-visible, .lb-arrow:focus-visible{ outline:3px solid var(--paper); outline-offset:3px; }
+
+.lb-close{ top:clamp(10px,2.4vw,22px); right:clamp(10px,2.4vw,22px); width:44px; height:44px; }
+.lb-close svg{ width:20px; height:20px; display:block; }
+
+.lb-arrow{
+  top:50%; transform:translateY(-50%);
+  width:52px; height:52px;
+  font-family:var(--font-display); font-size:30px; line-height:1;
+  padding-bottom:5px;
+}
+.lb-arrow:hover{ transform:translateY(-50%) scale(1.08); }
+.lb-prev{ left:clamp(8px,2vw,26px); } .lb-next{ right:clamp(8px,2vw,26px); }
+.lb-arrow[hidden]{ display:none; }
+
+/* виджеты-кадры в большом виде: та же логика, светлая палитра */
+.lb-dots{ position:absolute; left:0; right:0; bottom:clamp(14px,2.6vh,26px); }
+.lb-dots-row{ display:flex; justify-content:center; align-items:center; gap:6px; }
+.lb-dots-row .gal-dot > span{
+  border-color:var(--paper); background:transparent;
+  box-shadow:none; width:16px; height:7px;
+}
+.lb-dots-row .gal-dot.is-on > span{ width:34px; background:var(--paper); }
+.lb-dots-row .gal-dot:hover > span{ background:rgba(246,242,233,.45); }
+.lb-dots-row .gal-dot:focus-visible > span{ outline:2.5px solid var(--paper); outline-offset:2px; }
+
+@media (max-width:560px){
+  .lb-arrow{ width:42px; height:42px; font-size:24px; }
+  .lb-close{ width:38px; height:38px; }
+}
+@media (prefers-reduced-motion: reduce){
+  .lightbox.is-on, .lb-frame{ animation:none; }
+  .lb-close, .lb-arrow, .gal-dot > span{ transition:none; }
 }

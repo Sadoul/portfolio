@@ -18,3 +18,14 @@ assets/**/*.png
 assets/**/*.jpg
 assets/**/*.jpeg
 assets/**/*.mp4
+
+# ...но текстуры 3D-сцены — рабочие файлы, а не исходники: их читает
+# js/mc-scene.js во время работы, без них сцена не грузится.
+!assets/mc/tex/
+!assets/mc/tex/*.png
+
+# папки-исходники: скриншоты, из которых собраны webp в assets/
+from_texture/
+/photo_*.jpg
+/photo_*.jpeg
+/photo_*.png

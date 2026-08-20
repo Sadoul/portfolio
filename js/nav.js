@@ -8,7 +8,7 @@
 (function(){
   "use strict";
 
-  const { TABS, PROJECTS, BIO, UI, PH } = window.PORTFOLIO;
+  const { TABS, PROJECTS, BIO, UI } = window.PORTFOLIO;
   const ACTIVE = TABS.filter(t => t.active);
   const N = ACTIVE.length;
 
@@ -107,6 +107,25 @@
     });
     subEl.textContent = L(ACTIVE[current].subtitle);
     if (window.TAB_DECOR) TAB_DECOR.show(ACTIVE[current].id);
+    syncMcStage(ACTIVE[current].id === 'mc');
+  }
+
+  /* Сцена Minecraft: показываем только на своей вкладке и только там
+     крутим анимацию — в остальное время кадры не рисуются.
+     display переключаем сразу, прозрачность — следующим кадром,
+     иначе перехода не будет (элемент только что был display:none). */
+  function syncMcStage(on){
+    const st = document.getElementById('mcStage');
+    if (!st) return;
+    if (on){
+      st.classList.add('is-on');
+      requestAnimationFrame(() => st.classList.add('is-lit'));
+      if (window.MC_SCENE) MC_SCENE.show(true);
+    } else {
+      st.classList.remove('is-lit');
+      if (window.MC_SCENE) MC_SCENE.show(false);
+      setTimeout(() => { if (!st.classList.contains('is-lit')) st.classList.remove('is-on'); }, 520);
+    }
   }
 
   function renderContent(){
@@ -115,39 +134,75 @@
     renderProjects(tab);
   }
 
-  function mediaHTML(p){
-    const tag = (p.type || 'placeholder').toLowerCase();
-    if (p.src){
-      if (tag === 'video') return `<video src="${p.src}" autoplay muted loop playsinline></video>`;
-      return `<img src="${p.src}" alt="${esc(L(p.title))}"/>`;
+  /* =========================================================
+     Медиа карточек. Один проект = один «набор кадров»:
+       gallery -> все кадры, photo/gif/video -> один, none -> пусто.
+     Наборы лежат в mediaSets, карточка ссылается на свой индексом
+     (data-mid) — и точки под галереей, и полноэкранный просмотр
+     читают один и тот же массив, поэтому не могут разойтись.
+     ========================================================= */
+  let mediaSets = [];
+
+  function mediaItems(p){
+    if (p.gallery && p.gallery.length)
+      return p.gallery.map(src => ({ src, kind: kindOf(p.type, src) }));
+    if (p.src) return [{ src:p.src, kind:kindOf(p.type, p.src) }];
+    return [];
+  }
+  /* тип кадра решает расширение файла: 'gallery' у проекта ничего
+     не говорит о том, картинка внутри или видео */
+  function kindOf(type, src){
+    if (/\.(mp4|webm|mov)$/i.test(src)) return 'video';
+    if ((type||'').toLowerCase() === 'video') return 'video';
+    return 'image';
+  }
+  const frameHTML = (it, alt, cls) => it.kind === 'video'
+    ? `<video class="${cls}" src="${esc(it.src)}" autoplay muted loop playsinline></video>`
+    : `<img class="${cls}" src="${esc(it.src)}" alt="${esc(alt)}"/>`;
+
+  /* точки-виджеты под галереей: по одной на кадр, активная — шире
+     и залита. Номер кадра читается позицией, без «2/4». */
+  function dotsHTML(n, cur, cls){
+    let s = `<div class="${cls}" role="tablist" aria-label="${esc(UI[lang].shot)}">`;
+    for (let i=0;i<n;i++){
+      s += `<button class="gal-dot${i===cur?' is-on':''}" type="button" role="tab"
+              data-go="${i}" aria-selected="${i===cur?'true':'false'}"
+              aria-label="${esc(UI[lang].shot)} ${i+1}"><span></span></button>`;
     }
-    const ph = PH[tag] || PH.photo;
-    return `<div class="ph">${ph}<span class="ph-tag">${tag==='placeholder'?UI[lang].media:tag}</span></div>`;
+    return s + `</div>`;
   }
   function linkHTML(p){
-    if (p.link) return `<a class="link live" href="${p.link}" target="_blank" rel="noopener">${UI[lang].openLabel}</a>`;
-    return `<span class="link disabled">${UI[lang].linkUnavailable}</span>`;
+    /* ссылки нет — плашки нет вообще: «недоступно» ничего не даёт */
+    if (!p.link) return '';
+    return `<a class="link live" href="${esc(p.link)}" target="_blank" rel="noopener">${UI[lang].openLabel}</a>`;
   }
-  function renderCard(p){
-    const tag = (p.type || 'placeholder').toLowerCase();
-    let media;
-    if (p.gallery && p.gallery.length){
-      const gal = p.gallery;
-      media = `<div class="gallery" data-gal='${esc(JSON.stringify(gal))}' data-cur="0">
-        <img class="gal-img" src="${esc(gal[0])}" alt="${esc(L(p.title))}"/>`
-        + (gal.length > 1
-          ? `<button class="gal-arrow gal-prev" data-dir="-1" aria-label="prev">‹</button>
-             <button class="gal-arrow gal-next" data-dir="1" aria-label="next">›</button>
-             <span class="gal-count">1/${gal.length}</span>` : '')
-        + `</div>`;
-    } else {
-      media = mediaHTML(p);
+  function renderCard(p, idx){
+    const items = mediaItems(p);
+    mediaSets[idx] = { items, cur:0, title:L(p.title) };
+    const body = `<div class="body"><h3 class="title">${esc(L(p.title))}</h3>
+      <p class="desc">${esc(L(p.desc))}</p>${linkHTML(p)}</div>`;
+    if (!items.length)
+      return `<article class="card card--nomedia">${body}</article>`;
+
+    const multi = items.length > 1;
+    let media = frameHTML(items[0], L(p.title), 'gal-img');
+    if (multi){
+      media += `<button class="gal-arrow gal-prev" type="button" data-dir="-1"
+                  aria-label="${esc(UI[lang].prev)}">‹</button>
+                <button class="gal-arrow gal-next" type="button" data-dir="1"
+                  aria-label="${esc(UI[lang].next)}">›</button>`
+             + dotsHTML(items.length, 0, 'gal-dots');
     }
-    return `<article class="card"><div class="media">${media}<span class="badge">${tag}</span></div>
-      <div class="body"><h3 class="title">${esc(L(p.title))}</h3><p class="desc">${esc(L(p.desc))}</p>${linkHTML(p)}</div></article>`;
+    media += `<span class="media-zoom" aria-hidden="true">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+           stroke-linecap="round" stroke-linejoin="round">
+        <path d="M4 9V4h5M20 15v5h-5M15 4h5v5M9 20H4v-5"/></svg></span>`;
+    return `<article class="card"><div class="media" data-mid="${idx}"
+      role="button" tabindex="0" aria-label="${esc(UI[lang].zoom)}">${media}</div>${body}</article>`;
   }
   function renderProjects(tab){
     const items = PROJECTS[tab.id] || [];
+    mediaSets = [];
     const head = `<div class="content-head"><h2>${esc(L(tab.label))}</h2><span class="count">${items.length} ${UI[lang].works}</span><span class="rule"></span></div>`;
     content.innerHTML = head + `<div class="grid">${items.map(renderCard).join('')}</div>`;
   }
@@ -163,8 +218,7 @@
         <p class="bio-handle">${esc(BIO.handle)}</p>
         <ul class="bio-facts">${facts}</ul>
         <div class="bio-stacks">${stacks}</div>
-      </div></div>
-      <img class="bio-wig" src="assets/wig-dev.svg" alt="иллюстрация"/>`;
+      </div></div>`;
   }
 
   function esc(s){ return String(s==null?'':s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
@@ -212,6 +266,7 @@
      не скроллится только если курсор реально над сценой */
   let wheelLock = false;
   if (heroEl) heroEl.addEventListener('wheel', (e) => {
+    if (boxOpen()) return;               // просмотр открыт — механизм не листаем
     if (Math.abs(e.deltaY) < 6) return;
     e.preventDefault();
     if (wheelLock) return;
@@ -224,24 +279,121 @@
     sideVel += (e.deltaY>0?1:-1) * Math.min(Math.abs(e.deltaY)/30, 6);
   }, { passive:true });
 
-  window.addEventListener('keydown', (e) => {
-    if (e.key==='ArrowLeft'){ e.preventDefault(); prev(); }
-    else if (e.key==='ArrowRight'){ e.preventDefault(); next(); }
-  });
   langSw.querySelectorAll('.lang-btn').forEach(b => b.addEventListener('click', () => setLang(b.dataset.lang)));
 
-  /* галерея: переключение стрелками */
+  /* =========================================================
+     Галерея в карточке: стрелки и точки листают кадр на месте.
+     ========================================================= */
+  function setFrame(mediaEl, set, i){
+    const items = set.items;
+    set.cur = (i + items.length) % items.length;
+    const it = items[set.cur];
+    const old = mediaEl.querySelector('.gal-img');
+    const fresh = document.createElement('div');
+    fresh.innerHTML = frameHTML(it, set.title, 'gal-img');
+    const node = fresh.firstElementChild;
+    if (old) mediaEl.replaceChild(node, old);
+    else mediaEl.insertBefore(node, mediaEl.firstChild);
+    mediaEl.querySelectorAll('.gal-dots .gal-dot').forEach((d, k) => {
+      const on = k === set.cur;
+      d.classList.toggle('is-on', on);
+      d.setAttribute('aria-selected', on ? 'true' : 'false');
+    });
+  }
   content.addEventListener('click', (e) => {
-    const btn = e.target.closest('.gal-arrow'); if (!btn) return;
-    const gal = btn.closest('.gallery'); if (!gal) return;
-    let imgs; try { imgs = JSON.parse(gal.dataset.gal || '[]'); } catch(_){ return; }
-    if (!imgs.length) return;
-    const dir = parseInt(btn.dataset.dir || '1', 10);
-    let cur = parseInt(gal.dataset.cur || '0', 10);
-    cur = (cur + dir + imgs.length) % imgs.length;
-    const img = gal.querySelector('.gal-img'); if (img) img.src = imgs[cur];
-    const cnt = gal.querySelector('.gal-count'); if (cnt) cnt.textContent = (cur+1) + '/' + imgs.length;
-    gal.dataset.cur = String(cur);
+    const mediaEl = e.target.closest('.media');
+    if (!mediaEl) return;
+    const set = mediaSets[parseInt(mediaEl.dataset.mid, 10)];
+    if (!set || !set.items.length) return;
+
+    const arrow = e.target.closest('.gal-arrow');
+    if (arrow){
+      setFrame(mediaEl, set, set.cur + parseInt(arrow.dataset.dir || '1', 10));
+      return;
+    }
+    const dot = e.target.closest('.gal-dot');
+    if (dot){ setFrame(mediaEl, set, parseInt(dot.dataset.go, 10)); return; }
+
+    openBox(set, set.cur, mediaEl);      // клик по самому кадру — во весь экран
+  });
+  /* клавиатура: карточка-медиа — обычная кнопка */
+  content.addEventListener('keydown', (e) => {
+    if (e.key !== 'Enter' && e.key !== ' ') return;
+    const mediaEl = e.target.closest('.media');
+    if (!mediaEl || e.target.closest('.gal-arrow') || e.target.closest('.gal-dot')) return;
+    const set = mediaSets[parseInt(mediaEl.dataset.mid, 10)];
+    if (!set || !set.items.length) return;
+    e.preventDefault();
+    openBox(set, set.cur, mediaEl);
+  });
+
+  /* =========================================================
+     Полноэкранный просмотр: кадр целиком, по бокам стрелки
+     (если кадров несколько), крестик и ESC — закрыть.
+     ========================================================= */
+  const box     = document.getElementById('lightbox');
+  const boxWrap = box && box.querySelector('.lb-frame');
+  const boxDots = box && box.querySelector('.lb-dots');
+  const boxPrev = box && box.querySelector('.lb-prev');
+  const boxNext = box && box.querySelector('.lb-next');
+  const boxClose= box && box.querySelector('.lb-close');
+  let boxSet = null, boxI = 0, boxFrom = null;
+
+  const boxOpen = () => !!(box && box.classList.contains('is-on'));
+
+  function paintBox(){
+    if (!boxSet) return;
+    const items = boxSet.items;
+    boxI = (boxI + items.length) % items.length;
+    boxWrap.innerHTML = frameHTML(items[boxI], boxSet.title, 'lb-media');
+    const multi = items.length > 1;
+    boxPrev.hidden = boxNext.hidden = !multi;
+    boxDots.innerHTML = multi ? dotsHTML(items.length, boxI, 'lb-dots-row') : '';
+    box.setAttribute('aria-label', boxSet.title || '');
+  }
+  function openBox(set, i, from){
+    if (!box) return;
+    boxSet = set; boxI = i || 0; boxFrom = from || null;
+    paintBox();
+    box.classList.add('is-on');
+    box.removeAttribute('aria-hidden');
+    document.body.classList.add('lb-lock');
+    if (boxClose) boxClose.focus();
+  }
+  function closeBox(){
+    if (!box || !boxOpen()) return;
+    box.classList.remove('is-on');
+    box.setAttribute('aria-hidden', 'true');
+    document.body.classList.remove('lb-lock');
+    boxWrap.innerHTML = '';           // остановить видео
+    boxSet = null;
+    if (boxFrom && boxFrom.focus) boxFrom.focus();
+    boxFrom = null;
+  }
+  const boxStep = (d) => { if (boxSet){ boxI += d; paintBox(); } };
+
+  if (box){
+    box.addEventListener('click', (e) => {
+      if (e.target.closest('.lb-close')){ closeBox(); return; }
+      const a = e.target.closest('.lb-arrow');
+      if (a){ boxStep(parseInt(a.dataset.dir || '1', 10)); return; }
+      const d = e.target.closest('.gal-dot');
+      if (d){ boxI = parseInt(d.dataset.go, 10); paintBox(); return; }
+      /* клик по фону (не по кадру и не по кнопкам) — закрыть */
+      if (!e.target.closest('.lb-frame')) closeBox();
+    });
+  }
+
+  /* стрелки: пока открыт просмотр — листают кадры, иначе вкладки */
+  window.addEventListener('keydown', (e) => {
+    if (boxOpen()){
+      if (e.key === 'Escape'){ e.preventDefault(); closeBox(); }
+      else if (e.key === 'ArrowLeft'){ e.preventDefault(); boxStep(-1); }
+      else if (e.key === 'ArrowRight'){ e.preventDefault(); boxStep(1); }
+      return;
+    }
+    if (e.key==='ArrowLeft'){ e.preventDefault(); prev(); }
+    else if (e.key==='ArrowRight'){ e.preventDefault(); next(); }
   });
 
   /* ресайз: пересобрать вписывание механизма (мобильные/повороты) */
@@ -256,6 +408,7 @@
   /* старт */
   buildTabs();
   if (window.TAB_DECOR) TAB_DECOR.init(ACTIVE.map(t=>t.id));
+  if (window.MC_SCENE) MC_SCENE.init({ el: document.getElementById('mcStage') });
   applyLang('ru');
   buildSideCog();
   requestAnimationFrame(initMech);

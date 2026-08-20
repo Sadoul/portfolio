@@ -1,10 +1,10 @@
 /* =========================================================
    Данные портфолио с i18n (ru / en).
-   Чтобы добавить реальные медиа/ссылки — отредактируйте поля
-   type, src, link у нужного проекта.
-     type:  'video' | 'photo' | 'gif' | 'placeholder'
-     src:   путь к файлу в assets/...   (или null)
-     link:  URL проекта или null         (null => «ссылка недоступна»)
+   В списках только реальные работы: карточек-заглушек нет.
+     type:    'video' | 'photo' | 'gif' | 'gallery' | 'none'
+     src:     путь к файлу в assets/...   (или null)
+     gallery: массив путей — для type:'gallery'
+     link:    URL проекта или null (null => плашки ссылки просто нет)
    Тексты — объекты { ru, en }.
    ========================================================= */
 
@@ -39,23 +39,6 @@ const ICONS = {
   </svg>`,
 };
 
-/* Заглушки медиа (рисуются, пока нет реального файла) */
-const PH = {
-  video: `<svg viewBox="0 0 100 100" fill="none" stroke="#8c8780" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
-    <rect x="14" y="26" width="72" height="48" rx="6"/>
-    <path d="M44 40 V60 L62 50 Z" fill="#8c8780" stroke="none"/>
-  </svg>`,
-  photo: `<svg viewBox="0 0 100 100" fill="none" stroke="#8c8780" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
-    <rect x="12" y="22" width="76" height="56" rx="6"/>
-    <circle cx="40" cy="44" r="9"/>
-    <path d="M22 78 L46 54 L60 70 L72 60 L80 72"/>
-  </svg>`,
-  gif: `<svg viewBox="0 0 100 100" fill="none" stroke="#8c8780" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
-    <rect x="14" y="22" width="72" height="56" rx="6"/>
-    <text x="50" y="58" font-family="Caveat, cursive" font-size="26" font-weight="700" text-anchor="middle" fill="#8c8780" stroke="none">GIF</text>
-  </svg>`,
-};
-
 const TABS = [
   { id:'web',  icon:ICONS.web,  active:true,
     label:{ru:'Web',       en:'Web'},
@@ -82,14 +65,12 @@ const PROJECTS = {
     { title:{ru:'RPWorld — веб', en:'RPWorld — web'},
       desc:{ru:'Веб-проект RPWorld. Два экрана — листай стрелками.', en:'RPWorld web project. Two screens — use the arrows.'},
       type:'gallery', gallery:['assets/web/rpw_web.webp','assets/web/rpw_web2.webp'], src:null, link:'https://sadoul.github.io/rpworld' },
-    { title:{ru:'Веб-приложение', en:'Web app'},
-      desc:{ru:'Полноценный full-stack сервис.', en:'Full-stack service.'}, type:'placeholder', src:null, link:null },
-    { title:{ru:'Лендинг', en:'Landing page'},
-      desc:{ru:'Одностраничник с анимациями.', en:'One-pager with animations.'}, type:'placeholder', src:null, link:null },
-    { title:{ru:'Дашборд', en:'Dashboard'},
-      desc:{ru:'Аналитическая панель.', en:'Analytics dashboard.'}, type:'placeholder', src:null, link:null },
-    { title:{ru:'API-сервис', en:'API service'},
-      desc:{ru:'REST/GraphQL бэкенд.', en:'REST/GraphQL backend.'}, type:'placeholder', src:null, link:null },
+    { title:{ru:'Аудит безопасности', en:'Security Audit'},
+      desc:{ru:'Макет сайта для аудита безопасности. Позже обговорили с клиентом и внесли правки — в галерее три экрана, листай стрелками.',
+            en:'A website mockup for a security audit. Later reviewed with the client and revised — three screens in the gallery, use the arrows.'},
+      type:'gallery',
+      gallery:['assets/web/audit-1.webp','assets/web/audit-2.webp','assets/web/audit-3.webp'],
+      src:null, link:null },
   ],
   mc: [
     { title:{ru:'Расы (Skyrim-стиль)', en:'Races (Skyrim-style)'},
@@ -100,31 +81,41 @@ const PROJECTS = {
       desc:{ru:'С нуля воссоздал плагин headpats на 1.21.10. Клиентский мод + серверный плагин позволяют гладить игроков и животных.',
             en:'Recreated the headpats plugin from scratch on 1.21.10. A client mod + server plugin let you pet players and animals.'},
       type:'gif', src:'assets/mc/headpats.gif', link:null },
-    { title:{ru:'Карта-приключение', en:'Adventure map'},
-      desc:{ru:'Адвенчура-карта.', en:'Adventure map.'}, type:'placeholder', src:null, link:null },
-    { title:{ru:'Мод-пак', en:'Mod pack'},
-      desc:{ru:'Набор модов.', en:'Collection of mods.'}, type:'placeholder', src:null, link:null },
-    { title:{ru:'Спавн-строение', en:'Spawn build'},
-      desc:{ru:'Лор-спавн.', en:'Lore spawn.'}, type:'placeholder', src:null, link:null },
-    { title:{ru:'Мини-игра', en:'Minigame'},
-      desc:{ru:'Мини-игра в сервере.', en:'Server minigame.'}, type:'placeholder', src:null, link:null },
+    { title:{ru:'DanganVerse — лаунчер', en:'DanganVerse — launcher'},
+      desc:{ru:'Свой лаунчер для сборки DanganVerse: автообновление по дельте, админ-панель с загрузкой ZIP-сборок и папок, дерево файлов репозитория, свой модпак, настройки и вход в аккаунт.',
+            en:'A custom launcher for the DanganVerse pack: delta auto-updates, an admin panel that uploads ZIP builds and folders, a repository file tree, custom modpacks, settings and account sign-in.'},
+      type:'gallery',
+      gallery:['assets/mc/danganverse-1.webp','assets/mc/danganverse-2.webp'],
+      src:null, link:null },
+    { title:{ru:'Прокачка на 50 уровней', en:'50-level progression'},
+      desc:{ru:'Клиент выдал текстуры — я собрал комплексный мод, а затем перенёс его в плагин. 50 уровней прокачки, пассивные баффы и дебаффы, легендарные оружия. На старте выбор из 5 рас, у каждой свои крафты брони, оружия и талисманов. Интеграция с IronSpells.',
+            en:'The client supplied the textures — I built a complex mod, then ported it to a plugin. 50 levels of progression, passive buffs and debuffs, legendary weapons. Five races to pick from at the start, each with its own armour, weapon and talisman crafts. Integrates IronSpells.'},
+      type:'gallery',
+      gallery:['assets/mc/levels-1.webp','assets/mc/levels-2.webp'],
+      src:null, link:null },
+    { title:{ru:'Сообщения в чате', en:'Chat messages'},
+      desc:{ru:'Мод на оформление сообщений в чате — как у Лололошки. Красивые анимации появления и ухода реплик.',
+            en:'A chat message mod in the style of Lololoshka. Neat animations as lines appear and leave.'},
+      type:'gallery',
+      gallery:['assets/mc/chatmsg-1.webp','assets/mc/chatmsg-2.webp'],
+      src:null, link:null },
+    { title:{ru:'Маяки островов', en:'Island beacons'},
+      desc:{ru:'Плагин в духе Rust: игрок приватит остров маяком и строит дом. Базы можно гриферить — спец. динамитом пробить стену, отмычкой взломать двери.',
+            en:'A Rust-flavoured plugin: the player claims an island with a beacon and builds a house. Bases can be raided — special dynamite blows walls open, a lockpick opens doors.'},
+      type:'photo', src:'assets/mc/islands-1.webp', link:null },
+    { title:{ru:'Мод из ресурспака', en:'Mod out of a resource pack'},
+      desc:{ru:'Перенёс модельки предметов из ресурспака в мод и добавил функционал. Плюс пак ModelEngine + MythicMobs: ловушки тоже переехали в мод. Всё функционирует.',
+            en:'Ported item models out of a resource pack into a mod and gave them behaviour. Plus a ModelEngine + MythicMobs pack: the traps moved into the mod too. All of it works.'},
+      type:'gallery',
+      gallery:['assets/mc/frompack-1.webp','assets/mc/frompack-2.webp','assets/mc/frompack-3.webp',
+               'assets/mc/frompack-4.webp','assets/mc/frompack-5.webp','assets/mc/frompack-6.webp',
+               'assets/mc/frompack-7.webp'],
+      src:null, link:null },
   ],
   game: [
     { title:{ru:'RPWorld', en:'RPWorld'},
       desc:{ru:'Игра на C++ (Vulkan) с собственным движком. Подробнее — на отдельной странице.', en:'A C++ (Vulkan) game with a custom engine. See the dedicated page.'},
-      type:'placeholder', src:null, link:'https://sadoul.github.io/rpworld' },
-    { title:{ru:'2D-платформер', en:'2D platformer'},
-      desc:{ru:'Свой движок.', en:'Custom engine.'}, type:'placeholder', src:null, link:null },
-    { title:{ru:'3D-песочница', en:'3D sandbox'},
-      desc:{ru:'Воксельный мир.', en:'Voxel world.'}, type:'placeholder', src:null, link:null },
-    { title:{ru:'Рогалик', en:'Roguelike'},
-      desc:{ru:'Процедурный данжен.', en:'Procedural dungeon.'}, type:'placeholder', src:null, link:null },
-    { title:{ru:'Аркада', en:'Arcade'},
-      desc:{ru:'Мини-игра с геймджема.', en:'Game jam entry.'}, type:'placeholder', src:null, link:null },
-    { title:{ru:'Симулятор', en:'Simulator'},
-      desc:{ru:'Физический симулятор.', en:'Physics simulator.'}, type:'placeholder', src:null, link:null },
-    { title:{ru:'Шутер', en:'Shooter'},
-      desc:{ru:'Прототип шутера.', en:'Shooter prototype.'}, type:'placeholder', src:null, link:null },
+      type:'none', src:null, link:'https://sadoul.github.io/rpworld' },
   ],
 };
 
@@ -133,7 +124,7 @@ const BIO = {
   handle: '@Nichtojestv0',
   photo: 'assets/web/me.webp',
   facts: [
-    { ru:'18 лет', en:'18 years old' },
+    { ru:'20 лет', en:'20 years old' },
     { ru:'Принимается криптовалюта', en:'Cryptocurrency accepted' },
     { ru:'Делаю Minecraft-моды и плагины с 12 лет', en:'Building Minecraft mods & plugins since age 12' },
     { ru:'50 Minecraft-проектов', en:'50 Minecraft projects shipped' },
@@ -152,8 +143,12 @@ const BIO = {
 };
 
 const UI = {
-  ru: { works:'работ', openLabel:'открыть ↗', linkUnavailable:'ссылка пока недоступна', media:'медиа' },
-  en: { works:'works', openLabel:'open ↗', linkUnavailable:'link unavailable', media:'media' },
+  ru: { works:'работ', openLabel:'открыть ↗',
+        zoom:'открыть во весь экран', close:'закрыть', prev:'предыдущее', next:'следующее',
+        shot:'кадр' },
+  en: { works:'works', openLabel:'open ↗',
+        zoom:'open fullscreen', close:'close', prev:'previous', next:'next',
+        shot:'shot' },
 };
 
-window.PORTFOLIO = { ICONS, PH, TABS, PROJECTS, BIO, UI, LANGS:['ru','en'] };
+window.PORTFOLIO = { ICONS, TABS, PROJECTS, BIO, UI, LANGS:['ru','en'] };

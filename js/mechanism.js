@@ -12,7 +12,7 @@
        │     └── PlateRing   (4 таблички вкладок на ободе, активная
        │                      залита чернилами; клик = переход)
        ├── SecondaryGears (под шестернёй и позади — не по бокам)
-       ├── UnderPipes     (ржавые трубы под диском, фланцы, капли)
+       ├── UnderPipes     (ржавые трубы под диском, фланцы, вентиль)
        ├── Pipes / Valves / Gauges  (задний план)
        └── LeftArrow / RightArrow   (деревянные, на ползунах,
                                      ходят по направляющим валам)
@@ -29,7 +29,10 @@ window.MECHANISM = (function(){
   const PAPER_SIDE = 0xe8e1d2;   // боковые грани — чуть темнее
   const PAPER_DEEP = 0xded6c4;   // задний план
   const WOOD       = 0xe4dccb;   // «дерево»: тот же скетч, но теплее
-  const WOOD_HOVER = 0xfffdf6;
+  /* под курсором стрелка ТЕМНЕЕТ и уходит в красный: на светлой
+     бумаге затемнение читается лучше, чем засветка (та сливалась
+     с фоном), а красноватый тон сразу говорит «кнопка нажимается». */
+  const WOOD_HOT   = 0x9c5544;   // ≈47% яркости дерева, красный доминирует умеренно
 
   /* ---------- параметры механизма ---------- */
   const TEETH      = 24;
@@ -44,6 +47,14 @@ window.MECHANISM = (function(){
   const STEP_DEG   = 90;
   const SPIN_MS    = 980;    // длительность одного шага (ход тяжелее)
   const RUST       = 0xcfc4ad;   // «ржавая» труба — чуть грязнее бумаги
+  /* Шестерёнка на валу и шестерёнка за ступицей накладываются на
+     экране почти целиком, а тон у обеих был один (PAPER_DEEP) — они
+     сливались в одно пятно. Разводим по тону: передняя светлее и
+     теплее, задняя темнее и холоднее. Оттенок слабый — насыщенность
+     8% и 3% против 11% у деревянных стрелок, так что картинка
+     остаётся почти чёрно-белой. */
+  const GEAR_SHAFT = 0xe0d8cf;   // на валу: светлее, тёплый
+  const GEAR_BACK  = 0xc7cbce;   // за ступицей: темнее, холодный
 
   /* ---------- состояние ---------- */
   let THREE = null;
@@ -53,6 +64,7 @@ window.MECHANISM = (function(){
   let labelText = '';
   let onPlateCb = null;      // клик по табличке -> перейти на вкладку
   let secondary = [];        // {group, ratio}
+  let spinners = [];         // {obj, ratio, axis} — крутятся от главного диска
   let arrows = [];           // {group, hit, dir, mats, hover, press, homeX, homeScale, nx}
   let raf = 0, dirty = true, reduced = false;
   let angle = 0, target = 0, animFrom = 0, animTo = 0, animT = 1, animDur = SPIN_MS, lastT = 0;
@@ -124,6 +136,16 @@ window.MECHANISM = (function(){
     }
     return this;
   };
+  /* окружность в плоскости YZ (торцы труб, лежащих по оси X) */
+  LineBag.prototype.ringYZ = function(r, x0, seg, cy, cz){
+    seg = seg || 48; cy = cy||0; cz = cz||0;
+    for(let i=0;i<seg;i++){
+      const a = i/seg*Math.PI*2, b = (i+1)/seg*Math.PI*2;
+      this.seg(x0, cy+r*Math.cos(a), cz+r*Math.sin(a),
+               x0, cy+r*Math.cos(b), cz+r*Math.sin(b));
+    }
+    return this;
+  };
   /* вертикальные «швы» цилиндра — несколько штук, для скетча */
   LineBag.prototype.seams = function(r, y1, y2, count, cx, cz, phase){
     count = count||4; cx = cx||0; cz = cz||0; phase = phase||0;
@@ -147,31 +169,39 @@ window.MECHANISM = (function(){
      ========================================================= */
   function rng(seed){ let s = seed>>>0; return ()=>{ s = (s*1664525+1013904223)>>>0; return s/4294967296; }; }
 
-  /* редкие короткие ВЕРТИКАЛЬНЫЕ полоски на зубьях:
-     на одной вертикальной оси — одна линия, без штриховки;
-     разной длины, на разной высоте; иногда 2–3 рядом. */
+  /* ВЕРТИКАЛЬНЫЕ штрихи на зубьях: по 2–3 на грань, разной длины,
+     высоты и толщины — как от руки.
+     Штрихи привязаны к зубу: 1024 px = 4 зуба (24 зуба / 6 тайлов),
+     внутри зуба они разложены по слотам, поэтому зазор между
+     соседними ~85 px текстуры. Этого хватает, чтобы на экране они
+     не сливались в одно серое пятно даже без retina.
+     Жирные полосы, которые тут были раньше, брались не отсюда, а из
+     UV: u считался по углу, и на почти радиальных боковинах зуба
+     текстура растягивалась в несколько раз. Это исправлено в
+     makeUV — там u идёт по длине контура. */
   function texToothStripes(){
     const W = 1024, H = 168;
     const c = document.createElement('canvas'); c.width = W; c.height = H;
     const x = c.getContext('2d');
     x.fillStyle = '#ffffff'; x.fillRect(0,0,W,H);
-    x.strokeStyle = 'rgba(22,20,19,0.86)'; x.lineCap = 'round'; x.lineWidth = 4;
+    x.lineCap = 'round';
     const rnd = rng(20260819);
-    const top = 24, bot = H-24, span = bot-top;
-    let px = 40 + rnd()*90;
-    while(px < W-40){
-      const group = 1 + Math.floor(rnd()*3);      // 1..3 линии рядом, не более
-      for(let k=0;k<group && px<W-30;k++){
-        const h  = span*(0.22 + rnd()*0.48);      // короткие, разной длины
-        const y0 = top + rnd()*(span-h);          // на разной высоте
-        x.beginPath(); x.moveTo(px, y0); x.lineTo(px, y0+h); x.stroke();
-        px += 15 + rnd()*12;                      // соседние — вплотную
+    const top = 22, bot = H-22, span = bot-top;
+    const BLOCKS = 4, bw = W/BLOCKS;
+    for(let b=0;b<BLOCKS;b++){
+      const n = rnd() < 0.5 ? 2 : 3;              // 2–3 штриха на грань
+      for(let i=0;i<n;i++){
+        const px = b*bw + bw*(i + 0.5)/n + (rnd()-0.5)*bw*0.20;
+        const h  = span*(0.20 + rnd()*0.58);      // разной длины
+        const y0 = top + rnd()*(span - h);        // на разной высоте
+        x.lineWidth   = 2 + rnd()*1.2;            // и разной толщины
+        x.strokeStyle = 'rgba(22,20,19,' + (0.56 + rnd()*0.24).toFixed(2) + ')';
+        x.beginPath(); x.moveTo(px, y0); x.lineTo(px, y0 + h); x.stroke();
       }
-      px += 120 + rnd()*230;                      // затем большой пропуск
     }
     const t = new THREE.CanvasTexture(c);
     t.wrapS = t.wrapT = THREE.RepeatWrapping;
-    t.anisotropy = 4;
+    t.anisotropy = 8;
     return t;
   }
 
@@ -262,6 +292,48 @@ window.MECHANISM = (function(){
     return t;
   }
 
+  /* клубы дыма: рисованные «облачка» контуром, как в скетче.
+     Не мыльное пятно из блюра, а замкнутый неровный контур с
+     редкой штриховкой внутри — чтобы дым читался тем же карандашом,
+     что и весь механизм. Вариантов несколько, чтобы клубы не были
+     копиями друг друга. */
+  function texPuff(seed){
+    const S = 128;
+    const c = document.createElement('canvas'); c.width = S; c.height = S;
+    const x = c.getContext('2d');
+    const rnd = rng(seed);
+    /* контур: окружность, у которой радиус гуляет по углу */
+    const lobes = 5 + (rnd()*3|0);
+    const base  = S*0.30, jit = S*0.085;
+    const rAt = (a)=>{
+      let r = base;
+      for(let k=1;k<=lobes;k++) r += jit*Math.sin(a*k + seed*0.7 + k)/k;
+      return r;
+    };
+    x.beginPath();
+    for(let i=0;i<=72;i++){
+      const a = i/72*Math.PI*2, r = rAt(a);
+      const px = S/2 + r*Math.cos(a), py = S/2 + r*Math.sin(a);
+      i ? x.lineTo(px,py) : x.moveTo(px,py);
+    }
+    x.closePath();
+    x.fillStyle = 'rgba(22,20,19,0.10)'; x.fill();
+    x.strokeStyle = 'rgba(22,20,19,0.62)'; x.lineWidth = 2.6;
+    x.lineJoin = 'round'; x.stroke();
+    /* пара внутренних дуг — намёк на объём, без штриховки */
+    x.strokeStyle = 'rgba(22,20,19,0.34)'; x.lineWidth = 2;
+    for(let i=0;i<2;i++){
+      const a0 = rnd()*Math.PI*2, r = base*(0.34 + rnd()*0.3);
+      x.beginPath();
+      x.arc(S/2 + (rnd()-0.5)*base*0.4, S/2 + (rnd()-0.5)*base*0.4,
+            r, a0, a0 + 1.1 + rnd());
+      x.stroke();
+    }
+    const t = new THREE.CanvasTexture(c);
+    t.anisotropy = 2;
+    return t;
+  }
+
   /* ---------- материалы (создаются один раз) ---------- */
   const MAT = {};
   function initMaterials(){
@@ -272,19 +344,40 @@ window.MECHANISM = (function(){
     MAT.bolt     = new THREE.MeshLambertMaterial({ color:PAPER_SIDE });
     MAT.spoke    = new THREE.MeshLambertMaterial({ color:PAPER_SIDE });
     MAT.deep     = new THREE.MeshLambertMaterial({ color:PAPER_DEEP });
+    MAT.gearShaft= new THREE.MeshLambertMaterial({ color:GEAR_SHAFT });
+    MAT.gearBack = new THREE.MeshLambertMaterial({ color:GEAR_BACK });
     MAT.rust     = new THREE.MeshLambertMaterial({ color:RUST, map:texRust() });
     MAT.line     = new THREE.LineBasicMaterial({ color:INK, transparent:true, opacity:0.92 });
     MAT.lineSoft = new THREE.LineBasicMaterial({ color:INK, transparent:true, opacity:0.5 });
+    /* спрайты дыма: 4 рисунка клубов, материал у каждого клуба свой
+       (нужна своя opacity), поэтому храним только текстуры */
+    MAT.puffTex  = [texPuff(3), texPuff(17), texPuff(41), texPuff(88)];
   }
   /* =========================================================
      UV-генератор для ExtrudeGeometry:
        • крышки  — мир -> [0..1] по габариту (короткие круговые дуги);
        • стенки  — u = длина по окружности (тайлы), v = толщина.
-     Так вертикальные полоски идут ровно по зубьям и не рвутся
-     на стыках четырёхугольников.
+     u стенок идёт по ДЛИНЕ контура, а не по углу. Угол на боковинах
+     зуба растёт медленно (они почти радиальные), а на экране боковина
+     занимает много места — при u=угол текстура растягивалась там в
+     несколько раз, и тонкий штрих превращался в жирную чёрную полосу.
+     По длине масштаб одинаков на впадине, боковине и площадке.
+     Вся длина контура = ровно tiles тайлов (tiles целое), поэтому на
+     стыке последнего и первого квада шва не видно.
      ========================================================= */
-  function makeUV(rTip, tiles){
+  function makeUV(rTip, tiles, pts){
     const K = 1/(2*rTip), C = 0.5;
+    /* карта «точка контура -> пройденная длина» */
+    const key = (px, py)=> Math.round(px*1e4) + '|' + Math.round(py*1e4);
+    const arc = new Map();
+    let total = 0;
+    if(pts){
+      for(let i=0;i<pts.length;i++){
+        arc.set(key(pts[i][0], pts[i][1]), total);
+        const n = pts[(i+1) % pts.length];
+        total += Math.hypot(n[0]-pts[i][0], n[1]-pts[i][1]);
+      }
+    }
     return {
       generateTopUV: function(g, verts, a, b, c){
         return [
@@ -294,12 +387,24 @@ window.MECHANISM = (function(){
         ];
       },
       generateSideWallUV: function(g, verts, a, b, c, d){
-        const ang = (i)=> Math.atan2(verts[i*3+1], verts[i*3]);
-        let a0 = ang(a), a1 = ang(b);
-        while(a1 - a0 >  Math.PI) a1 -= Math.PI*2;
-        while(a1 - a0 < -Math.PI) a1 += Math.PI*2;
-        const f = tiles/(Math.PI*2);
-        const ua = a0*f, ub = a1*f;
+        const at = (i)=> arc.get(key(verts[i*3], verts[i*3+1]));
+        let ua, ub;
+        const s0 = at(a), s1 = at(b);
+        if(total > 0 && s0 !== undefined && s1 !== undefined){
+          let e = s1;
+          if(e - s0 >  total/2) e -= total;       // квад через стык
+          if(e - s0 < -total/2) e += total;
+          const f = tiles/total;
+          ua = s0*f; ub = e*f;
+        } else {
+          /* контур отверстия: его точек в карте нет — считаем по углу */
+          const ang = (i)=> Math.atan2(verts[i*3+1], verts[i*3]);
+          let a0 = ang(a), a1 = ang(b);
+          while(a1 - a0 >  Math.PI) a1 -= Math.PI*2;
+          while(a1 - a0 < -Math.PI) a1 += Math.PI*2;
+          const f = tiles/(Math.PI*2);
+          ua = a0*f; ub = a1*f;
+        }
         const za = verts[a*3+2], zb = verts[c*3+2];
         const v0 = za < zb ? 0 : 1, v1 = 1 - v0;
         return [
@@ -313,20 +418,52 @@ window.MECHANISM = (function(){
      Профиль зуба — трапеция: широкое основание, плоская вершина,
      наклонные боковины, чёткая впадина. Не треугольник.
         angle0 впадина → angle1 подъём → angle2..3 площадка → спуск
+
+     asym: шестерня НЕ симметричная — зубья чуть разной высоты и
+     ширины, боковины с разным наклоном (зуб «завален»), пара зубьев
+     битая. Деталь кованая, а не выштампованная: у скетча так больше
+     характера, и глазу есть за что зацепиться при вращении.
+     Джиттер детерминированный (rng с фиксированным зерном) — форма
+     одна и та же при каждой загрузке.
+       • дно впадины одинаковое у всех зубьев: иначе на стыке зубьев
+         радиус прыгает и в контуре видна ступенька;
+       • сумма долей (площадка + 2 боковины + впадина) = 1, поэтому
+         зуб всегда укладывается в свой шаг и профиль не самопересекается.
      ========================================================= */
-  function gearProfile(teeth, rRoot, rTip){
+  /* Профиль живёт в своей системе координат: зуб с индексом i стоит
+     на угле i·(360/TEETH), а в «табличном» счёте (как у табличек и
+     противовеса) это тот же угол + 90°. Скол ставим на 22-й зуб —
+     в исходном повороте он выходит вперёд-направо и его видно;
+     изношенный на 3-й — слева. */
+  const ASYM_SEED  = 20259;
+  const TOOTH_CHIP = 22;   // скол: вершина почти до впадины
+  const TOOTH_WORN = 3;    // сильно изношенный зуб
+  function gearProfile(teeth, rRoot, rTip, asym){
     const pts = [], corners = [];
     const step = Math.PI*2/teeth;
-    const fTip = 0.30, fFlank = 0.115, fVal = 1 - fTip - 2*fFlank;
     const P = (r,a)=> pts.push([r*Math.cos(a), r*Math.sin(a)]);
+    const rnd = asym ? rng(ASYM_SEED) : null;
     for(let i=0;i<teeth;i++){
+      let fTip = 0.30, fA = 0.115, fB = 0.115, tipR = rTip;
+      if(rnd){
+        const j = ()=> rnd()*2 - 1;
+        fTip += j()*0.040;
+        fA   += j()*0.022;
+        fB   += j()*0.022;          // fA ≠ fB — зуб наклонён в одну сторону
+        /* ±0.035 — это ~13% высоты зуба (0.28): на экране 4–5 px,
+           разнобой виден, но обод не выглядит поломанным */
+        tipR += j()*0.035;
+        if(i === TOOTH_CHIP){ tipR = rRoot + 0.085; fTip = 0.20; fA = 0.075; fB = 0.155; }
+        if(i === TOOTH_WORN){ tipR = rTip - 0.075;  fTip = 0.36; fA = 0.150; fB = 0.085; }
+      }
+      const fVal = 1 - fTip - fA - fB;
       let a = i*step;
       P(rRoot, a);                                   // впадина
       P(rRoot, a + fVal*step*0.5);                   // (2 сегмента — круглый корень)
-      a += fVal*step;      P(rRoot, a); corners.push([rRoot,a]);   // начало подъёма
-      a += fFlank*step;    P(rTip,  a); corners.push([rTip, a]);   // начало площадки
-      a += fTip*step;      P(rTip,  a); corners.push([rTip, a]);   // конец площадки
-      a += fFlank*step;                 corners.push([rRoot,a]);   // конец спуска
+      a += fVal*step;   P(rRoot, a); corners.push([rRoot, a]);   // начало подъёма
+      a += fA*step;     P(tipR,  a); corners.push([tipR,  a]);   // начало площадки
+      a += fTip*step;   P(tipR,  a); corners.push([tipR,  a]);   // конец площадки
+      a += fB*step;                  corners.push([rRoot, a]);   // конец спуска
     }
     return { pts, corners };
   }
@@ -334,7 +471,7 @@ window.MECHANISM = (function(){
   /* универсальная шестерня: createGear(teeth, radius, thickness…) */
   function createGear(o){
     const g = new THREE.Group();
-    const prof = gearProfile(o.teeth, o.rRoot, o.rTip);
+    const prof = gearProfile(o.teeth, o.rRoot, o.rTip, o.asym);
     const shape = new THREE.Shape(prof.pts.map(p=> new THREE.Vector2(p[0],p[1])));
     if(o.hole){
       const h = new THREE.Path();
@@ -343,11 +480,14 @@ window.MECHANISM = (function(){
     }
     const geo = new THREE.ExtrudeGeometry(shape, {
       depth:o.thick, bevelEnabled:false, steps:1, curveSegments:64,
-      UVGenerator: makeUV(o.rTip, o.tiles||6)
+      UVGenerator: makeUV(o.rTip, o.tiles||6, prof.pts)
     });
     geo.rotateX(-Math.PI/2);
     geo.translate(0, -o.thick/2, 0);
-    g.add(new THREE.Mesh(geo, o.soft ? [MAT.deep, MAT.deep] : [MAT.cap, MAT.wall]));
+    /* soft — деталь заднего плана: одним тоном, без штриховки.
+       o.tint задаёт свой тон вместо общего MAT.deep. */
+    const flat = o.tint || MAT.deep;
+    g.add(new THREE.Mesh(geo, o.soft ? [flat, flat] : [MAT.cap, MAT.wall]));
 
     const yT = o.thick/2, yB = -o.thick/2;
     const L = new LineBag();
@@ -371,9 +511,9 @@ window.MECHANISM = (function(){
   }
   const createMainGear  = ()=> createGear({ teeth:TEETH, rRoot:R_ROOT, rTip:R_TIP,
                                             thick:THICK, hole:R_HOLE, tiles:6,
-                                            rings:[R_ROOT] });
-  const createSmallGear = (teeth, rTip, thick, soft)=> createGear({
-    teeth, rTip, rRoot:rTip-0.135*(rTip/0.7), thick, tiles:3, soft
+                                            rings:[R_ROOT], asym:true });
+  const createSmallGear = (teeth, rTip, thick, soft, tint)=> createGear({
+    teeth, rTip, rRoot:rTip-0.135*(rTip/0.7), thick, tiles:3, soft, tint
   });
   /* =========================================================
      Болты: одна геометрия + InstancedMesh на кольцо (дёшево),
@@ -385,12 +525,16 @@ window.MECHANISM = (function(){
     g.translate(0, h/2, 0);
     return g;
   }
+  /* o.at — готовый список углов (рад). Если его нет, болты ставятся
+     ровным кольцом по o.count. */
   function boltRing(parent, o){
     if(!BOLT_GEO) BOLT_GEO = createBolt(1, 1);
-    const im = new THREE.InstancedMesh(BOLT_GEO, MAT.bolt, o.count);
+    const at = o.at || null;
+    const n = at ? at.length : o.count;
+    const im = new THREE.InstancedMesh(BOLT_GEO, MAT.bolt, n);
     const m = new THREE.Matrix4(), L = new LineBag();
-    for(let i=0;i<o.count;i++){
-      const a = (o.phase||0) + i/o.count*Math.PI*2;
+    for(let i=0;i<n;i++){
+      const a = at ? at[i] : (o.phase||0) + i/n*Math.PI*2;
       const x = o.radius*Math.cos(a), z = o.radius*Math.sin(a);
       m.makeScale(o.r, o.h, o.r); m.setPosition(x, o.y, z);
       im.setMatrixAt(i, m);
@@ -430,21 +574,107 @@ window.MECHANISM = (function(){
     boltRing(g, { count:6, radius:0.58, y:yTop+0.17, r:0.055, h:0.065, phase:0.39 });
     return g;
   }
-  /* спицы: толстые перемычки от ступицы к ободу, между ними — окна */
+  /* Спицы: толстые перемычки от ступицы к ободу, между ними — окна.
+     Стоят НЕ ровно через 60°: углы разведены, ширина у каждой своя,
+     одна (SPOKE_FAT) заметно толще — как поставленная взамен
+     лопнувшей. Симметрии нет ни по углу, ни по толщине. */
+  const SPOKE_OFF = [0, -0.075, 0.055, -0.02, 0.085, -0.05];  // рад, к i·60°
+  const SPOKE_W   = [0.26, 0.225, 0.28, 0.24, 0.35, 0.255];   // высота бруса
+  const SPOKE_FAT = 4;
+  /* пять болтов на полотне, углы вразнобой (не кольцо) */
+  const BOLT_AT = [0.20, 1.24, 2.55, 3.61, 5.02];
   function createSpokes(){
     const g = new THREE.Group();
     const r0 = 0.66, r1 = 1.23, len = r1 - r0;
-    const geo = new THREE.BoxGeometry(len, 0.26, 0.21);
-    const edg = new THREE.EdgesGeometry(geo);
     for(let i=0;i<SPOKES;i++){
-      const a = i/SPOKES*Math.PI*2;
+      const a = i/SPOKES*Math.PI*2 + (SPOKE_OFF[i] || 0);
+      const w = SPOKE_W[i] || 0.26;
+      const geo = new THREE.BoxGeometry(len, w, 0.21);
       const s = new THREE.Group();
       s.position.set((r0+len/2)*Math.cos(a), 0, -(r0+len/2)*Math.sin(a));
       s.rotation.y = a;
       s.add(new THREE.Mesh(geo, MAT.spoke));
-      s.add(new THREE.LineSegments(edg, MAT.line));
+      s.add(new THREE.LineSegments(new THREE.EdgesGeometry(geo), MAT.line));
+      /* у толстой спицы — накладка сверху с двумя заклёпками: видно,
+         что это ремонт, а не штатная деталь (и видно из-под камеры) */
+      if(i === SPOKE_FAT){
+        const plGeo = new THREE.BoxGeometry(len*0.52, 0.05, 0.255);
+        const pl = new THREE.Mesh(plGeo, MAT.bolt);
+        pl.position.set(0.02, w/2 + 0.024, 0);
+        s.add(pl);
+        const ple = new THREE.LineSegments(new THREE.EdgesGeometry(plGeo), MAT.line);
+        ple.position.copy(pl.position); s.add(ple);
+        [-0.085, 0.085].forEach(dx=>{
+          const rv = new THREE.Mesh(new THREE.CylinderGeometry(0.024,0.024,0.045,8), MAT.hub);
+          rv.position.set(0.02 + dx, w/2 + 0.06, 0);
+          s.add(rv);
+        });
+      }
       g.add(s);
     }
+    return g;
+  }
+
+  /* =========================================================
+     Асимметричные детали на диске: одиночный противовес на ободе
+     и клёпаная заплата на полотне. Оба стоят в промежутках между
+     табличками (те через 90°, значит свободно 45°/135°/225°/315°),
+     нигде не повторяются — диск перестаёт быть «ровным колесом»
+     и при вращении сразу видно, где он сейчас.
+     ========================================================= */
+  const ASYM_CW    = 45  * Math.PI/180;   // противовес
+  const ASYM_PATCH = 218 * Math.PI/180;   // заплата
+  /* та же система координат, что у табличек: (R·sin a, y, R·cos a) */
+  const atAngle = (R, a)=> [R*Math.sin(a), R*Math.cos(a)];
+
+  function createCounterweight(){
+    const g = new THREE.Group();
+    const yTop = THICK/2;
+    const [x, z] = atAngle(1.50, ASYM_CW);
+    /* колодка вдоль хорды + два прижимных болта */
+    const geo = new THREE.BoxGeometry(0.46, 0.17, 0.24);
+    const m = new THREE.Mesh(geo, MAT.spoke);
+    m.position.set(x, yTop + 0.085, z);
+    m.rotation.y = ASYM_CW;
+    g.add(m);
+    const e = new THREE.LineSegments(new THREE.EdgesGeometry(geo), MAT.line);
+    e.position.copy(m.position); e.rotation.y = ASYM_CW; g.add(e);
+    /* скос-«ушко» наружу и болты */
+    const lug = new THREE.Mesh(new THREE.CylinderGeometry(0.10, 0.13, 0.13, 12), MAT.bolt);
+    const [lx, lz] = atAngle(1.50, ASYM_CW + 0.135);
+    lug.position.set(lx, yTop + 0.065, lz);
+    g.add(lug);
+    const L = new LineBag();
+    L.ring(0.13, yTop, 14, lx, lz); L.ring(0.10, yTop + 0.13, 14, lx, lz);
+    [-0.155, 0.155].forEach(d=>{
+      const [bx, bz] = atAngle(1.50, ASYM_CW + d/1.50);
+      const b = new THREE.Mesh(new THREE.CylinderGeometry(0.032,0.032,0.06,8), MAT.hub);
+      b.position.set(bx, yTop + 0.20, bz); g.add(b);
+      L.ring(0.032, yTop + 0.23, 8, bx, bz);
+    });
+    g.add(new THREE.LineSegments(L.build().geometry, MAT.line));
+    return g;
+  }
+  function createPatch(){
+    const g = new THREE.Group();
+    const yTop = THICK/2;
+    const [x, z] = atAngle(1.44, ASYM_PATCH);
+    const geo = new THREE.BoxGeometry(0.50, 0.035, 0.30);
+    const m = new THREE.Mesh(geo, MAT.bolt);
+    m.position.set(x, yTop + 0.017, z);
+    m.rotation.y = ASYM_PATCH - 0.10;      // приклёпана чуть косо
+    g.add(m);
+    const e = new THREE.LineSegments(new THREE.EdgesGeometry(geo), MAT.line);
+    e.position.copy(m.position); e.rotation.copy(m.rotation); g.add(e);
+    const L = new LineBag();
+    [[-0.17,-0.09],[0.17,-0.09],[0,0.10]].forEach(o=>{
+      const c = Math.cos(ASYM_PATCH - 0.10), s = Math.sin(ASYM_PATCH - 0.10);
+      const rx = x + o[0]*c + o[1]*s, rz = z - o[0]*s + o[1]*c;
+      const rv = new THREE.Mesh(new THREE.CylinderGeometry(0.026,0.026,0.045,8), MAT.hub);
+      rv.position.set(rx, yTop + 0.045, rz); g.add(rv);
+      L.ring(0.026, yTop + 0.067, 8, rx, rz);
+    });
+    g.add(new THREE.LineSegments(L.build().geometry, MAT.lineSoft));
     return g;
   }
 
@@ -454,8 +684,13 @@ window.MECHANISM = (function(){
     G.add(createMainGear());
     G.add(createSpokes());
     G.add(createHub());
-    /* болты вынесены на 1.63, чтобы не спорить с табличками (1.37) */
-    boltRing(G, { count:12, radius:1.63, y:THICK/2, r:0.052, h:0.060, phase:0.13 });
+    /* Болты на верхней плоскости: было ровное кольцо из 12 —
+       читалось как россыпь одинаковых цилиндриков и спорило с
+       табличками. Оставляем пять, вразнобой по углу: деталь
+       заметна там, где на неё смотрят, и не превращается в узор. */
+    boltRing(G, { at:BOLT_AT, radius:1.63, y:THICK/2, r:0.052, h:0.060 });
+    G.add(createCounterweight());
+    G.add(createPatch());
     G.add(createTopShaft());
     buildPlateRing(G);
     return G;
@@ -488,47 +723,48 @@ window.MECHANISM = (function(){
     g.position.set(x,y,z);
     return g;
   }
-  /* фланец на трубе: два кольца-бортика, чтобы стык читался */
-  function createFlange(x,y,z, r){
+  /* фланец на трубе: два кольца-бортика, чтобы стык читался.
+     axis — вдоль какой оси идёт труба ('x' | 'y' | 'z'): диск должен
+     стоять ПЕРПЕНДИКУЛЯРНО трубе. Раньше он всегда был горизонтальным
+     и на лежачей трубе читался плавником, а не стыком. */
+  function createFlange(x,y,z, r, axis){
     const g = new THREE.Group();
     const m = new THREE.Mesh(new THREE.CylinderGeometry(r*1.5, r*1.5, 0.05, 16), MAT.deep);
+    const L = new LineBag();
+    if(axis === 'x'){
+      m.rotation.z = Math.PI/2;
+      L.ringYZ(r*1.5, -0.025, 22); L.ringYZ(r*1.5, 0.025, 22);
+    } else if(axis === 'z'){
+      m.rotation.x = Math.PI/2;
+      L.ringXY(r*1.5, -0.025, 22); L.ringXY(r*1.5, 0.025, 22);
+    } else {
+      L.ring(r*1.5, 0.025, 22); L.ring(r*1.5, -0.025, 22);
+    }
     g.add(m);
-    const L = new LineBag();
-    L.ring(r*1.5, 0.025, 22); L.ring(r*1.5, -0.025, 22);
-    g.add(new THREE.LineSegments(L.build().geometry, MAT.lineSoft));
-    g.position.set(x,y,z);
-    return g;
-  }
-  /* висящая капля на трубе: капелька + пара сорвавшихся ниже */
-  function createDrip(x,y,z){
-    const g = new THREE.Group();
-    const bead = new THREE.Mesh(new THREE.SphereGeometry(0.032, 10, 8), MAT.deep);
-    bead.scale.y = 1.5; g.add(bead);
-    const L = new LineBag();
-    L.ringXY(0.032, 0.001, 12, 0, 0);
-    [[0.004,-0.17,0.020],[-0.006,-0.31,0.014]].forEach(d=>{
-      const b = new THREE.Mesh(new THREE.SphereGeometry(d[2], 8, 6), MAT.deep);
-      b.position.set(d[0], d[1], 0); b.scale.y = 1.6; g.add(b);
-      L.ringXY(d[2], 0.001, 10, d[0], d[1]);
-    });
     g.add(new THREE.LineSegments(L.build().geometry, MAT.lineSoft));
     g.position.set(x,y,z);
     return g;
   }
   /* =========================================================
      Вертикальный вал НАД шестерней: тонкий стержень + хомуты,
-     коронная шестерёнка, шкив, крышка. Ребёнок MainGearGroup —
+     коронная шестерёнка, шкив. Ребёнок MainGearGroup —
      вращается вместе с диском.
+
+     Вал НЕ заканчивается в кадре: он уходит за верхний край экрана,
+     как будто механизм продолжается выше страницы. Всё, что выше
+     детальной зоны, помечено noFit — иначе вписывание считало бы
+     вал габаритом и отодвигало камеру, мельча диск.
      ========================================================= */
+  const SHAFT_TOP = 9.0;                 // заведомо выше верхней границы кадра
   function createTopShaft(){
     const g = new THREE.Group();
     const y0 = THICK/2 + 0.56;            // от крышки ступицы
-    const y1 = y0 + 0.92;
+    const y1 = y0 + 0.92;                 // конец детальной зоны
     const L = new LineBag();
-    /* стержень */
+    /* стержень детальной зоны */
     const rod = new THREE.Mesh(new THREE.CylinderGeometry(0.062, 0.062, y1-y0, 14), MAT.hub);
     rod.position.y = (y0+y1)/2; g.add(rod);
-    L.ring(0.062, y0, 20); L.ring(0.062, y1, 20);
+    L.ring(0.062, y0, 20);
     L.seams(0.062, y0, y1, 2, 0, 0, 0.5);
     /* хомуты */
     [y0+0.14, y1-0.30].forEach(y=>{
@@ -537,51 +773,101 @@ window.MECHANISM = (function(){
       L.ring(0.105, y+0.035, 18); L.ring(0.105, y-0.035, 18);
     });
     /* коронная шестерёнка на валу */
-    const crown = createSmallGear(12, 0.30, 0.10, true);
+    const crown = createSmallGear(12, 0.30, 0.10, true, MAT.gearShaft);
     crown.position.y = y0 + 0.40; g.add(crown);
-    /* шкив под крышкой */
+    /* шкив: с него уходит привод куда-то выше кадра */
     const pul = new THREE.Mesh(new THREE.TorusGeometry(0.135, 0.032, 7, 20), MAT.deep);
     pul.rotation.x = Math.PI/2; pul.position.y = y1 - 0.14; g.add(pul);
     L.ring(0.167, y1-0.14, 24); L.ring(0.103, y1-0.14, 20);
-    /* крышка-конус */
-    const cap = new THREE.Mesh(new THREE.CylinderGeometry(0.045, 0.092, 0.10, 14), MAT.hub);
-    cap.position.y = y1 + 0.05; g.add(cap);
-    L.ring(0.092, y1, 18); L.ring(0.045, y1+0.10, 14);
-    /* поперечный штифт у крышки — деталь, за которую цепляется глаз */
-    const pin = new THREE.Mesh(new THREE.CylinderGeometry(0.022, 0.022, 0.30, 8), MAT.bolt);
-    pin.rotation.z = Math.PI/2; pin.position.y = y1 - 0.02; g.add(pin);
     g.add(new THREE.LineSegments(L.build().geometry, MAT.line));
-    g.userData.topY = y1 + 0.10;
+
+    /* ---- продолжение вала за край кадра ---- */
+    const up = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.062, 0.062, SHAFT_TOP - y1, 14), MAT.hub);
+    up.position.y = (y1 + SHAFT_TOP)/2;
+    up.userData.noFit = true; g.add(up);
+    const UL = new LineBag();
+    UL.seams(0.062, y1, SHAFT_TOP, 2, 0, 0, 0.5);
+    /* хомуты только на видимом участке: выше они всё равно за кадром */
+    [y1+0.46, y1+1.28, y1+2.20].forEach(y=>{
+      const c = new THREE.Mesh(new THREE.CylinderGeometry(0.098, 0.098, 0.062, 14), MAT.bolt);
+      c.position.y = y; c.userData.noFit = true; g.add(c);
+      UL.ring(0.098, y+0.031, 18); UL.ring(0.098, y-0.031, 18);
+    });
+    const uln = new THREE.LineSegments(UL.build().geometry, MAT.line);
+    uln.userData.noFit = true; g.add(uln);
+
+    g.userData.topY = y1;
     return g;
   }
   /* =========================================================
      Трубная развязка ПОД шестернёй, спереди-снизу — видна из-под
-     обода: магистраль с фланцами, колена, стояки, вентиль,
-     ржавчина и капли.
+     обода: магистраль с фланцами, колена, стояки, вентиль, ржавчина.
      ========================================================= */
+  /* Раньше это была одна прямая труба с одинаковыми коленами и
+     стояками на обоих концах — читалась как ось симметрии и мешала
+     асимметричному диску. Теперь трасса ломаная: слева толстая
+     магистраль с вентилем, посередине переходная муфта со сменой
+     диаметра и уступом по глубине, справа тонкая ветка, которая
+     уходит назад и обрывается заглушкой. Концы разные:
+     слева — открытый раструб с манжетой, справа — глухая заглушка. */
   function createUnderPipes(){
     const g = new THREE.Group();
-    const y = -0.97, z = 1.16, x = 1.52;
-    /* магистраль */
-    g.add(createPipe(-x, y, z, x, y, z, 0.11, true));
-    [-0.72, 0.0, 0.72].forEach(fx=> g.add(createFlange(fx, y, z, 0.11)));
-    /* колена по краям + короткие стояки вверх, под диск */
-    [-x, x].forEach(ex=>{
-      g.add(createElbow(ex, y, z, 0.11, true));
-      g.add(createPipe(ex, y, z, ex, y+0.34, z, 0.085, true));
-      g.add(createFlange(ex, y+0.34, z, 0.085));
-    });
-    /* отвод назад по центру — уходит под диск, добавляет глубину */
-    g.add(createPipe(0, y, z, 0, y, z-0.62, 0.075, true));
-    g.add(createElbow(0, y, z-0.62, 0.075, true));
-    /* вентиль на магистрали */
+    const y = -0.97, z = 1.16;
+    const xL = -1.55, xM = 0.10, xR = 1.46;
+    const rBig = 0.115, rSml = 0.082;
+    const zR = z - 0.30;                       // уступ по глубине справа
+
+    /* левая, толстая часть магистрали */
+    g.add(createPipe(xL, y, z, xM, y, z, rBig, true));
+    [-1.02, -0.46].forEach(fx=> g.add(createFlange(fx, y, z, rBig, 'x')));
+    /* переходная муфта: конус с толстой на тонкую */
+    const cone = new THREE.Mesh(
+      new THREE.CylinderGeometry(rSml, rBig, 0.20, 16, 1, true), MAT.rust);
+    cone.rotation.z = -Math.PI/2; cone.position.set(xM + 0.10, y, z); g.add(cone);
+    const CL = new LineBag();
+    CL.ringYZ(rBig, xM,        20, y, z);
+    CL.ringYZ(rSml, xM + 0.20, 20, y, z);
+    g.add(new THREE.LineSegments(CL.build().geometry, MAT.lineSoft));
+    /* правая, тонкая ветка: уступ назад, потом вдоль и заглушка */
+    g.add(createPipe(xM + 0.20, y, z, 0.72, y, z, rSml, true));
+    g.add(createElbow(0.72, y, z, rSml, true));
+    g.add(createPipe(0.72, y, z, 0.72, y, zR, rSml, true));
+    g.add(createElbow(0.72, y, zR, rSml, true));
+    g.add(createPipe(0.72, y, zR, xR, y, zR, rSml, true));
+    g.add(createFlange(1.14, y, zR, rSml, 'x'));
+    /* глухая заглушка на правом конце: шайба + гайка по центру */
+    const cap = new THREE.Mesh(new THREE.CylinderGeometry(rSml*1.34, rSml*1.34, 0.055, 16), MAT.deep);
+    cap.rotation.z = Math.PI/2; cap.position.set(xR, y, zR); g.add(cap);
+    const nut = new THREE.Mesh(new THREE.CylinderGeometry(0.036, 0.036, 0.05, 6), MAT.bolt);
+    nut.rotation.z = Math.PI/2; nut.position.set(xR + 0.05, y, zR); g.add(nut);
+    const KL = new LineBag();
+    KL.ringYZ(rSml*1.34, xR - 0.0275, 22, y, zR);
+    KL.ringYZ(rSml*1.34, xR + 0.0275, 22, y, zR);
+    g.add(new THREE.LineSegments(KL.build().geometry, MAT.lineSoft));
+
+    /* левый конец: колено вниз + короткий патрубок с раструбом
+       (открытый, в отличие от глухого правого) */
+    g.add(createElbow(xL, y, z, rBig, true));
+    g.add(createPipe(xL, y, z, xL, y - 0.26, z, 0.09, true));
+    const bell = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.145, 0.09, 0.12, 16, 1, true), MAT.rust);
+    bell.position.set(xL, y - 0.32, z); g.add(bell);
+    const BL = new LineBag();
+    BL.ring(0.145, y - 0.26, 22, xL, z); BL.ring(0.09, y - 0.38, 18, xL, z);
+    g.add(new THREE.LineSegments(BL.build().geometry, MAT.lineSoft));
+
+    /* один стояк вверх под диск — только слева, не парой */
+    g.add(createPipe(-1.28, y, z, -1.28, y + 0.40, z, 0.075, true));
+    g.add(createFlange(-1.28, y + 0.40, z, 0.075));
+    /* тройник-сброс вниз на тонкой ветке (справа от муфты) */
+    g.add(createPipe(0.36, y, z, 0.36, y - 0.22, z, 0.05, true));
+    g.add(createFlange(0.36, y - 0.22, z, 0.05));
+    /* вентиль на толстой магистрали, ближе к левому концу */
     const v = createValve(0.62);
-    v.position.set(-0.36, y+0.30, z);
+    v.position.set(-0.78, y + 0.30, z);
     g.add(v);
-    g.add(createPipe(-0.36, y, z, -0.36, y+0.16, z, 0.05));
-    /* капли с магистрали */
-    [[-1.02,-0.06],[0.34,0.04],[1.06,-0.02]].forEach(d=>
-      g.add(createDrip(d[0], y-0.12, z+d[1])));
+    g.add(createPipe(-0.78, y, z, -0.78, y + 0.16, z, 0.05));
     return g;
   }
   /* маховичок-клапан: кольцо + спицы + ступица (вертикально) */
@@ -600,6 +886,94 @@ window.MECHANISM = (function(){
     L.ringXY(0.085, 0.08, 16); L.ringXY(0.085, -0.08, 16);
     g.add(new THREE.LineSegments(L.build().geometry, MAT.lineSoft));
     if(scale) g.scale.setScalar(scale);
+    return g;
+  }
+
+  /* =========================================================
+     Выхлопная труба: стимпанковская дымовая труба на заднем плане.
+     Ствол с уступом, клёпаные пояса, косой раструб сверху, копоть.
+     Верх уходит за кадр (noFit) — как и вал, продолжает механизм
+     за пределы страницы. Из неё идёт дым в «сломанном» режиме.
+     ========================================================= */
+  const STACK = { x:-2.28, z:-3.05, y0:-0.62, y1:2.05, top:7.4 };
+  function createExhaust(){
+    const g = new THREE.Group();
+    const S = STACK, L = new LineBag();
+    const rLo = 0.20, rHi = 0.152;
+    /* нижняя, толстая секция + верхняя, тонкая: уступ по диаметру */
+    const yStep = S.y0 + 1.16;
+    const lo = new THREE.Mesh(
+      new THREE.CylinderGeometry(rLo, rLo*1.06, yStep - S.y0, 18, 1, true), MAT.rust);
+    lo.position.set(S.x, (S.y0 + yStep)/2, S.z); g.add(lo);
+    const hi = new THREE.Mesh(
+      new THREE.CylinderGeometry(rHi, rLo, S.y1 - yStep, 18, 1, true), MAT.rust);
+    hi.position.set(S.x, (yStep + S.y1)/2, S.z); g.add(hi);
+    L.ring(rLo*1.06, S.y0, 26, S.x, S.z);
+    L.ring(rLo,      yStep, 26, S.x, S.z);
+    L.seams(rLo, S.y0, yStep, 2, S.x, S.z, 0.7);
+    L.seams(rHi, yStep, S.y1, 2, S.x, S.z, 0.7);
+    /* клёпаные пояса: кольцо + точки-заклёпки по нему */
+    [S.y0+0.30, yStep-0.12, yStep+0.42, S.y1-0.20].forEach((y, i)=>{
+      const r = y < yStep ? rLo : rHi;
+      const band = new THREE.Mesh(
+        new THREE.CylinderGeometry(r*1.13, r*1.13, 0.075, 18), MAT.deep);
+      band.position.set(S.x, y, S.z); g.add(band);
+      L.ring(r*1.13, y+0.038, 24, S.x, S.z);
+      L.ring(r*1.13, y-0.038, 24, S.x, S.z);
+      for(let k=0;k<7;k++){
+        const a = 0.4 + i*0.3 + k/7*Math.PI*2;
+        L.ringYZ(0.016, S.x + r*1.14*Math.cos(a), 6, y, S.z + r*1.14*Math.sin(a));
+      }
+    });
+    /* Косой раструб и продолжение за кадр — ОДНА наклонённая группа.
+       Ось наклона стоит ровно на верхнем срезе ствола, поэтому раструб
+       садится на трубу без ступеньки, а секция над ним — точно на
+       раструб.
+       Раньше раструб и верхняя секция поворачивались каждая вокруг
+       своего центра: у секции высотой 5.05 низ уезжал в сторону на
+       0.33 — больше её собственного радиуса 0.25, — и труба сверху
+       выглядела разорванной. Пояса при этом сдвигались по линейной
+       прикидке (y-S.y1)*0.13, а швы не сдвигались вовсе: три детали
+       ехали по трём разным законам. */
+    L.ring(rHi, S.y1, 22, S.x, S.z);           // стык ствола и раструба
+    const lean = new THREE.Group();
+    lean.position.set(S.x, S.y1, S.z);
+    lean.rotation.z = 0.13;
+    g.add(lean);
+    const LL = new LineBag();                  // линии внутри наклона
+    const bell = new THREE.Mesh(
+      new THREE.CylinderGeometry(rHi*1.62, rHi, 0.30, 18, 1, true), MAT.rust);
+    bell.position.y = 0.15; lean.add(bell);
+    LL.ring(rHi*1.62, 0.30, 22);               // срез раструба
+    lean.add(new THREE.LineSegments(LL.build().geometry, MAT.lineSoft));
+    /* фундамент: плита + два подкоса к земле */
+    const base = new THREE.Mesh(new THREE.CylinderGeometry(0.34, 0.40, 0.10, 20), MAT.deep);
+    base.position.set(S.x, S.y0 - 0.05, S.z); g.add(base);
+    L.ring(0.34, S.y0, 26, S.x, S.z); L.ring(0.40, S.y0 - 0.10, 26, S.x, S.z);
+    [[0.46, 0.10], [-0.30, -0.42]].forEach(o=>{
+      g.add(createPipe(S.x, S.y0 + 0.62, S.z, S.x + o[0], S.y0 - 0.04, S.z + o[1], 0.032));
+    });
+    g.add(new THREE.LineSegments(L.build().geometry, MAT.lineSoft));
+
+    /* продолжение за кадр — соосно раструбу, в той же группе наклона,
+       поэтому координаты локальные: 0 = верхний срез ствола */
+    const upH = S.top - S.y1 - 0.30;
+    const up = new THREE.Mesh(
+      new THREE.CylinderGeometry(rHi*1.62, rHi*1.62, upH, 18, 1, true), MAT.rust);
+    up.position.y = 0.30 + upH/2;
+    up.userData.noFit = true; lean.add(up);
+    const UL = new LineBag();
+    UL.seams(rHi*1.62, 0.30, S.top - S.y1, 2, 0, 0, 0.7);
+    [0.78, 1.66].forEach(y=>{
+      const band = new THREE.Mesh(
+        new THREE.CylinderGeometry(rHi*1.78, rHi*1.78, 0.07, 18), MAT.deep);
+      band.position.y = y;
+      band.userData.noFit = true; lean.add(band);
+      UL.ring(rHi*1.78, y+0.035, 22);
+      UL.ring(rHi*1.78, y-0.035, 22);
+    });
+    const uln = new THREE.LineSegments(UL.build().geometry, MAT.lineSoft);
+    uln.userData.noFit = true; lean.add(uln);
     return g;
   }
 
@@ -631,7 +1005,30 @@ window.MECHANISM = (function(){
      ровно под середину стрелки, а не сбоку от неё. */
   const AR_SH = 0.145, AR_HH = 0.345, AR_D = 0.18;
   const AR_TAIL = -0.56, AR_NECK = 0.14, AR_TIP = 0.56;
-  function createArrow(){
+  /* насколько кронштейны вала разнесены от середины стрелки: по этой
+     же точке висит полуотвалившаяся стрелка в пасхалке */
+  const RAIL_HALF = 0.43;
+  /* Две стрелки НЕ одинаковые: у каждой своё зерно текстуры дерева,
+     свой набор гвоздей (число, положение, размер) и своя скоба.
+     Габарит и силуэт общие — иначе кнопки перестали бы читаться
+     как пара, — а вся мелочь на них разная. */
+  const AR_VAR = [
+    /* «правая»: две скобы, пять гвоздей парами, волокно крупное */
+    { texOff:[0.13, 0.41], texRep:[0.62, 1.90], texRot:0,
+      band:[-0.34,-0.20], blkW:0.30, blkX:0,
+      nails:[[-0.25,0.064,0.032],[-0.25,-0.064,0.030],
+             [-0.47,0.058,0.028],[-0.47,-0.070,0.034],
+             [ 0.06,0.000,0.026]] },
+    /* «левая»: одна скоба, четыре гвоздя вразнобой, волокно плотнее
+       и косое, ползун шире и сдвинут, у гвоздя — трещина */
+    { texOff:[0.57, 0.08], texRep:[0.74, 1.55], texRot:0.06,
+      band:[-0.26], blkW:0.34, blkX:-0.03,
+      nails:[[-0.34,0.070,0.034],[-0.34,-0.052,0.027],
+             [-0.10,0.086,0.029],[-0.50,0.004,0.031]],
+      crack:[-0.10, 0.086, 0.02, 0.128] }
+  ];
+  function createArrow(vi){
+    const V = AR_VAR[vi % AR_VAR.length];
     const g = new THREE.Group();
     const sh = AR_SH, hh = AR_HH, d = AR_D;
     const xTail = AR_TAIL, xNeck = AR_NECK, xTip = AR_TIP;
@@ -641,34 +1038,40 @@ window.MECHANISM = (function(){
     const shape = new THREE.Shape(pts.map(p=> new THREE.Vector2(p[0],p[1])));
     const geo = new THREE.ExtrudeGeometry(shape, { depth:d, bevelEnabled:false, steps:1 });
     geo.translate(0, 0, -d/2);
-    const tex = MAT.woodTex.clone(); tex.needsUpdate = true; tex.repeat.set(0.62, 1.9);
+    /* своя текстура: другой сдвиг/масштаб/поворот волокон — на одной
+       стрелке волокно плотнее и идёт чуть косо */
+    const tex = MAT.woodTex.clone(); tex.needsUpdate = true;
+    tex.repeat.set(V.texRep[0], V.texRep[1]);
+    tex.offset.set(V.texOff[0], V.texOff[1]);
+    if(V.texRot){ tex.center.set(0.5, 0.5); tex.rotation = V.texRot; }
     const mat = new THREE.MeshLambertMaterial({ color:WOOD, map:tex });
     g.add(new THREE.Mesh(geo, mat));
 
     const L = new LineBag();
     L.loopXY(pts, d/2); L.loopXY(pts, -d/2);
     pts.forEach(p=> L.seg(p[0], p[1], -d/2, p[0], p[1], d/2));
-    [-0.32,-0.18].forEach(x=>{                       // металлическая скоба
+    V.band.forEach(x=>{                              // металлическая скоба
       L.seg(x,-sh, d/2+0.001, x, sh, d/2+0.001);
       L.seg(x,-sh,-d/2-0.001, x, sh,-d/2-0.001);
       L.seg(x, sh, -d/2, x, sh, d/2); L.seg(x,-sh, -d/2, x,-sh, d/2);
     });
-    [[-0.25,0.062],[-0.25,-0.062],[-0.48,0.062],[-0.48,-0.062]].forEach(b=>{
-      L.ringXY(0.032, d/2+0.003, 10, b[0], b[1]);
-    });
+    V.nails.forEach(b=> L.ringXY(b[2], d/2+0.003, 10, b[0], b[1]));
+    /* трещина от одного из гвоздей — только у второй стрелки */
+    if(V.crack) L.seg(V.crack[0], V.crack[1], d/2+0.004,
+                      V.crack[2], V.crack[3], d/2+0.004);
     g.add(new THREE.LineSegments(L.build().geometry, MAT.line));
 
     /* ---- ползун: стрелка сидит на скользящем блоке, блок ходит
        по направляющему валу. Блок и вал двигаются вместе со
        стрелкой, вал остаётся в кронштейнах (см. buildScene). ---- */
-    const blk = new THREE.Mesh(new THREE.BoxGeometry(0.30, 0.15, 0.26), MAT.spoke);
-    blk.position.y = -sh - 0.075;
+    const blk = new THREE.Mesh(new THREE.BoxGeometry(V.blkW, 0.15, 0.26), MAT.spoke);
+    blk.position.set(V.blkX, -sh - 0.075, 0);
     g.add(blk);
     const blkE = new THREE.LineSegments(new THREE.EdgesGeometry(blk.geometry), MAT.line);
     blkE.position.copy(blk.position); g.add(blkE);
     /* штифт, которым блок притянут к телу стрелки */
     const pin = new THREE.Mesh(new THREE.CylinderGeometry(0.028, 0.028, 0.10, 8), MAT.bolt);
-    pin.position.y = -sh - 0.01; g.add(pin);
+    pin.position.set(V.blkX, -sh - 0.01, 0); g.add(pin);
 
     const hit = new THREE.Mesh(
       new THREE.BoxGeometry(xTip-xTail+0.18, hh*2+0.30, d+0.20),
@@ -723,7 +1126,7 @@ window.MECHANISM = (function(){
     });
     g.add(new THREE.LineSegments(L.build().geometry, MAT.line));
 
-    /* холст: и фон, и текст — так активную заливаем чернилами */
+    /* холст только под надпись: фон — бумага самого корпуса */
     const cv = document.createElement('canvas');
     cv.width = 512; cv.height = 168;
     const ctx = cv.getContext('2d');
@@ -755,26 +1158,26 @@ window.MECHANISM = (function(){
     g.add(hit);
     return { group:g, hit, cv, ctx, tex };
   }
-  /* перерисовать лицо таблички: активная — чернила, прочие — бумага */
+  /* Лицо таблички: только надпись чернилами по бумаге корпуса —
+     фон НЕ заливаем. Активная и так стоит лицом к зрителю, а
+     чёрная плашка под текстом выглядела кляксой. Отличие активной —
+     подчерк под надписью, того же цвета. */
   function drawPlateFace(p, text, active){
     const ctx = p.ctx, W = p.cv.width, H = p.cv.height;
     ctx.clearRect(0,0,W,H);
-    const R = 26;
-    ctx.beginPath();
-    ctx.moveTo(R,0); ctx.lineTo(W-R,0); ctx.quadraticCurveTo(W,0,W,R);
-    ctx.lineTo(W,H-R); ctx.quadraticCurveTo(W,H,W-R,H);
-    ctx.lineTo(R,H);   ctx.quadraticCurveTo(0,H,0,H-R);
-    ctx.lineTo(0,R);   ctx.quadraticCurveTo(0,0,R,0);
-    ctx.closePath();
-    if(active){ ctx.fillStyle = '#161413'; ctx.fill(); }
-    ctx.fillStyle = active ? '#f6f2e9' : '#161413';
+    ctx.fillStyle = '#161413';
     ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
     let size = 96;
     const font = (n)=> '700 '+n+'px "Space Grotesk", system-ui, sans-serif';
     ctx.font = font(size);
-    const wide = ctx.measureText(text).width;
-    if(wide > W-52){ size = Math.floor(size*(W-52)/wide); ctx.font = font(size); }
-    ctx.fillText(text, W/2, H/2 + 3);
+    let wide = ctx.measureText(text).width;
+    if(wide > W-52){ size = Math.floor(size*(W-52)/wide); ctx.font = font(size); wide = ctx.measureText(text).width; }
+    const y = H/2 - (active ? 6 : 0);
+    ctx.fillText(text, W/2, y + 3);
+    if(active){
+      const half = Math.min(wide, W-52)/2 + 6;
+      ctx.fillRect(W/2 - half, y + size*0.46, half*2, 7);
+    }
     p.tex.needsUpdate = true;
     dirty = true;
   }
@@ -845,7 +1248,7 @@ window.MECHANISM = (function(){
       mech.add(ax);
     });
 
-    const back = createSmallGear(14, 0.78, 0.28, true);
+    const back = createSmallGear(14, 0.78, 0.28, true, MAT.gearBack);
     back.position.set(0, 0.30, -2.60);
     mech.add(back);
     secondary.push({ group:back, ratio:-(TEETH/14), teeth:14 });
@@ -859,9 +1262,17 @@ window.MECHANISM = (function(){
       mech.add(createElbow(x, yP, zP, 0.105));
       mech.add(createPipe(x, yP, zP, x, yP+0.30, zP, 0.09));
     });
+    /* маховик слева: он приводится от главного диска, поэтому
+       крутится вместе с ним при смене вкладки. Передача понижающая
+       (ratio<1) и встречная — колесо идёт медленнее и в другую
+       сторону, так видно, что это привод, а не копия шестерни. */
     const valve = createValve(0.78); valve.position.set(-xP, yP+0.53, zP); mech.add(valve);
+    spinners.push({ obj:valve, ratio:-0.42, axis:'z' });
     const gauge = createGauge();     gauge.scale.setScalar(0.82);
     gauge.position.set(xP, yP+0.50, zP-0.02); mech.add(gauge);
+
+    /* выхлопная труба — сзади слева, за маховиком */
+    mech.add(createExhaust());
 
     /* трубы под диском (спереди-снизу, видны из-под обода) */
     mech.add(createUnderPipes());
@@ -872,9 +1283,9 @@ window.MECHANISM = (function(){
        физически подключённой к механизму, а не висящей рядом. */
     const AX = 2.72, AY = 0.10, AZ = 0.34;
     const RAIL_Y = AY - AR_SH - 0.075;        // ось вала = центр ползуна
-    [{ dir:-1 }, { dir:1 }].forEach(cfg=>{
+    [{ dir:-1, vi:1 }, { dir:1, vi:0 }].forEach(cfg=>{
       const s = cfg.dir;                       // +1 справа, -1 слева
-      const a = createArrow();
+      const a = createArrow(cfg.vi);           // у каждой стрелки свой вариант
       a.group.position.set(s*AX, AY, AZ);
       a.group.rotation.set(-0.06, 0, 0);
       const flip = s < 0;
@@ -885,7 +1296,7 @@ window.MECHANISM = (function(){
          СИММЕТРИЧНО относительно центра стрелки — иначе стрелка
          читается «съехавшей со своего столба». Свес наружу держим
          минимальным: он задаёт габарит кадра и мельчит диск. */
-      const xOut = s*(AX + 0.43), xIn = s*(AX - 0.43);
+      const xOut = s*(AX + RAIL_HALF), xIn = s*(AX - RAIL_HALF);
       mech.add(createPipe(xOut, RAIL_Y, AZ, xIn, RAIL_Y, AZ, 0.036));
 
       /* два кронштейна-стойки: труба вниз + опорная пятка */
@@ -996,7 +1407,17 @@ window.MECHANISM = (function(){
       if(!bins[b] || r2 > bins[b].r2) bins[b] = { r2, p:raw[i] };
     }
     probes = bins.filter(Boolean).map(b=>b.p);
+    /* Запас над раструбом выхлопа.
+       Вписывание прижимает силуэт к кромке: самой верхней точкой был
+       срез раструба, поэтому труба упиралась в край кадра и её не было
+       видно целиком. Укорачивать ствол бессмысленно — силуэт
+       становится ниже, камера подъезжает, и раструб снова у кромки.
+       Поэтому добавляем невидимую точку ВЫШЕ раструба: габарит
+       вырастает, камера отходит, и над трубой появляется поле. */
+    probes.push(new THREE.Vector3(STACK.x, STACK.y1 + 0.30 + STACK_HEAD, STACK.z));
   }
+  /* насколько поля просить над срезом раструба, в мировых единицах */
+  const STACK_HEAD = 0.62;
   /* Вписывание = подбор ДИСТАНЦИИ камеры + вертикальное
      центрирование модели (а не масштаба модели): перспектива
      остаётся естественной на любом экране, кадр заполняется. */
@@ -1067,7 +1488,7 @@ window.MECHANISM = (function(){
     const e = easeInOutCubic(t);
     return reduced ? e : e + 0.018*Math.sin(Math.PI*t)*Math.cos(Math.PI*t*3);
   }
-  let colWood = null, colHot = null;   // цвета «дерева»: покой / hover
+  let colWood = null, colHot = null;   // «дерево»: покой / под курсором (темнее, в красный)
 
   function tick(now){
     raf = requestAnimationFrame(tick);
@@ -1081,25 +1502,44 @@ window.MECHANISM = (function(){
       mainGear.rotation.y = angle;
       for(let i=0;i<secondary.length;i++)
         secondary[i].group.rotation.y = angle*secondary[i].ratio;
+      /* маховик и прочие ведомые детали: своя ось, своё передаточное */
+      for(let i=0;i<spinners.length;i++){
+        const s = spinners[i];
+        s.obj.rotation[s.axis || 'z'] = angle*s.ratio;
+      }
       busy = true;
     }
 
     const tx = reduced ? 0 : mouseNX, ty = reduced ? 0 : mouseNY;
-    if(Math.abs(tx-camNX) > 0.0008 || Math.abs(ty-camNY) > 0.0008){
-      camNX = lerp(camNX, tx, 0.055); camNY = lerp(camNY, ty, 0.055);
+    const dX = tx - camNX, dY = ty - camNY;
+    if(Math.abs(dX) > 0.0015 || Math.abs(dY) > 0.0015){
+      /* хвост экспоненты доводим до конца одним шагом: иначе после
+         ухода курсора сцена ещё ~1.4 с рисует кадры на разнице,
+         которой уже не видно, а в простое она должна стоять. */
+      const near = Math.abs(dX) < 0.006 && Math.abs(dY) < 0.006;
+      camNX = near ? tx : lerp(camNX, tx, 0.055);
+      camNY = near ? ty : lerp(camNY, ty, 0.055);
       camera.position.set(camBase.x + camNX*0.50, camBase.y - camNY*0.26, camBase.z);
       camera.lookAt(camAt.x, camAt.y, camAt.z);
       busy = true;
     }
 
-    for(let i=0;i<arrows.length;i++){
+    /* пасхалка: падение стрелок + дым */
+    if(broke || puffs.length || smokeT > 0){
+      if(stepBreak(now, dt)) busy = true;
+    }
+
+    /* пока стрелки сломаны, hover/press к ним не применяем: они не кнопки */
+    for(let i=0;i<arrows.length && !broke;i++){
       const a = arrows[i], hT = a.hover?1:0, pT = a.press?1:0;
       if(Math.abs(a.tH-hT) > 0.002 || Math.abs(a.tP-pT) > 0.002){
         a.tH = lerp(a.tH, hT, 0.16); a.tP = lerp(a.tP, pT, 0.28);
         const sc = 1 + a.tH*0.055;
         a.group.scale.set(a.flip ? -sc : sc, sc, sc);
         a.group.position.copy(a.home).addScaledVector(a.inward, a.tP*0.10 + a.tH*0.025);
-        a.mat.color.copy(colWood).lerp(colHot, clamp(a.tH,0,1));
+        /* hover тянет цвет в тёмно-красный, нажатие добивает ещё темнее */
+        a.mat.color.copy(colWood).lerp(colHot, clamp(a.tH,0,1))
+                   .multiplyScalar(1 - 0.20*clamp(a.tP,0,1));
         busy = true;
       }
     }
@@ -1121,6 +1561,229 @@ window.MECHANISM = (function(){
   }
 
   /* =========================================================
+     ПАСХАЛКА: если долбить по стрелкам слишком часто, механизм не
+     выдерживает. Та стрелка, по которой стучали последней, срывается
+     с ползуна и падает на землю; вторая обрывается наполовину —
+     висит на уцелевшем креплении и качается затухающим маятником.
+     Из выхлопной трубы и патрубков идёт дым.
+
+     Считаем именно НАЖАТИЯ (pointerdown по стрелке), не скролл и не
+     клавиши: пасхалка — награда за долбёжку по кнопке, а прокрутка
+     колесом к ней отношения не имеет.
+     Через RECOVER_MS всё собирается обратно: иначе один раз найденная
+     пасхалка навсегда убирала бы кнопки со страницы.
+     ========================================================= */
+  const RAGE_N = 7;            // столько нажатий
+  const RAGE_MS = 2600;        // за столько миллисекунд
+  const FALL_MS = 900;         // падение
+  const WOBBLE_MS = 4200;      // качание полуупавшей
+  const RECOVER_MS = 6400;     // когда собрать обратно
+  const REASM_MS = 620;        // сборка
+  const GROUND_Y = -0.78;      // уровень пятки стоек
+  /* Провис полуотвалившейся: 0.78 рад ≈ 45°, нос опускается почти до
+     земли. HALF_MAX — упор: глубже нос уходит под землю, поэтому
+     качание к нему прижимается, а не пробивает грунт. */
+  const HALF_TILT = 0.78, HALF_MAX = 0.86;
+  let clicks = [];             // метки времени нажатий
+  let broke = null;            // состояние пасхалки
+  let puffs = [];              // активные клубы дыма
+  let smokeT = 0;              // сколько ещё коптить, мс
+
+  function noteClick(a){
+    if(broke || reduced) return false;
+    const now = performance.now();
+    clicks.push({ t:now, a });
+    while(clicks.length && now - clicks[0].t > RAGE_MS) clicks.shift();
+    if(clicks.length < RAGE_N) return false;
+    startBreak(a);
+    clicks = [];
+    return true;
+  }
+
+  /* Полуотвалившаяся стрелка висит на ВНУТРЕННЕМ кронштейне — том, что
+     ближе к диску: наружный срыв, внутреннее крепление уцелело.
+     Шарнир именно там, а НЕ в середине стрелки. Если вращать вокруг
+     середины, хвост уходит вверх почти на столько же, на сколько нос
+     вниз, и это читается как качели, а не как «сорвалась и повисла».
+     Точка задана в локальных координатах группы; у левой стрелки
+     scale.x = -1, поэтому в мире шарнир всегда у внутреннего
+     кронштейна, без отдельного случая. */
+  const HINGE_X = -RAIL_HALF, HINGE_Y = -AR_SH - 0.075;
+
+  /* Держим шарнир на месте: сдвигаем группу так, чтобы точка шарнира
+     после поворота осталась там, где была в покое. Матрица группы —
+     T·R·S, S = diag(sx,1,1), поэтому для локальной точки p
+       T = home + S·p − R·(S·p).
+     Раскрытая покомпонентно, эта формула и стоит ниже. */
+  function pivotAt(ar, rz){
+    const s = Math.sin(rz), c = Math.cos(rz);
+    const px = (ar.flip ? -1 : 1) * HINGE_X, py = HINGE_Y;
+    ar.group.position.set(
+      ar.home.x + px*(1 - c) + py*s,
+      ar.home.y + py*(1 - c) - px*s,
+      ar.home.z);
+    ar.group.rotation.z = rz;
+  }
+
+  function startBreak(hitArrow){
+    const full = hitArrow || arrows[0];
+    const half = arrows[0] === full ? arrows[1] : arrows[0];
+    broke = { t0:performance.now(), full, half, done:false, halfRz:0 };
+    /* стрелки больше не кнопки: они лежат на земле */
+    full.hover = full.press = false;
+    half.hover = half.press = false;
+    host.classList.remove('is-hot');
+    smokeT = 2500;
+    dirty = true;
+  }
+
+  /* один клуб: спрайт с рисованным контуром, всплывает и растворяется */
+  function emit(x, y, z, up, spread){
+    if(puffs.length > 46) return;
+    const tex = MAT.puffTex[(Math.random()*MAT.puffTex.length)|0];
+    const m = new THREE.SpriteMaterial({ map:tex, transparent:true,
+                                         opacity:0, depthWrite:false });
+    const sp = new THREE.Sprite(m);
+    const s0 = 0.20 + Math.random()*0.16;
+    sp.scale.set(s0, s0, 1);
+    sp.position.set(x + (Math.random()-0.5)*spread, y, z + (Math.random()-0.5)*spread);
+    sp.userData.noFit = true;
+    mech.add(sp);
+    puffs.push({ sp, mat:m, life:0,
+                 ttl: 1500 + Math.random()*1300,
+                 vy: up*(0.55 + Math.random()*0.5),
+                 vx: (Math.random()-0.5)*0.30,
+                 vz: (Math.random()-0.5)*0.16,
+                 grow: 0.85 + Math.random()*0.85,
+                 peak: 0.30 + Math.random()*0.22 });
+  }
+
+  /* точки, откуда идёт дым: верх выхлопной трубы и два патрубка */
+  function smokeSources(){
+    return [
+      { x:STACK.x + 0.30, y:STACK.y1 + 0.30, z:STACK.z, up:1.0, spread:0.14 },
+      { x:-1.55,          y:-1.32,           z:1.16,    up:0.5, spread:0.10 },
+      { x: 0.36,          y:-1.22,           z:1.16,    up:0.4, spread:0.08 }
+    ];
+  }
+
+  function stepBreak(now, dt){
+    let busy = false;
+
+    /* --- дым: пока коптит, подсыпаем новые клубы --- */
+    if(smokeT > 0){
+      smokeT -= dt*1000;
+      const src = smokeSources();
+      for(let i=0;i<src.length;i++){
+        /* у трубы густо, у патрубков реже */
+        const rate = i === 0 ? 26 : 9;
+        if(Math.random() < rate*dt) emit(src[i].x, src[i].y, src[i].z, src[i].up, src[i].spread);
+      }
+      busy = true;
+    }
+    /* --- живущие клубы --- */
+    for(let i=puffs.length-1;i>=0;i--){
+      const p = puffs[i];
+      p.life += dt*1000;
+      const u = p.life/p.ttl;
+      if(u >= 1){
+        mech.remove(p.sp); p.mat.dispose(); puffs.splice(i,1);
+        busy = true; continue;
+      }
+      p.sp.position.x += p.vx*dt;
+      p.sp.position.y += p.vy*dt;
+      p.sp.position.z += p.vz*dt;
+      p.vy *= 0.995;                       // подъём затухает
+      const sc = p.sp.scale.x + p.grow*dt;
+      p.sp.scale.set(sc, sc, 1);
+      /* быстро проявился, потом медленно растворился */
+      p.mat.opacity = p.peak * (u < 0.18 ? u/0.18 : 1 - (u-0.18)/0.82);
+      busy = true;
+    }
+
+    if(!broke) return busy;
+    const el = now - broke.t0;
+
+    /* --- сборка обратно --- */
+    if(el > RECOVER_MS){
+      const u = clamp((el - RECOVER_MS)/REASM_MS, 0, 1);
+      const e = easeInOutCubic(u);
+      const F = broke.full, H = broke.half;
+      /* упавшая встаёт из положения «лежит» в исходное */
+      F.group.position.lerpVectors(broke.restPos, F.home, e);
+      F.group.rotation.x = lerp(broke.restRot.x, -0.06, e);
+      F.group.rotation.y = lerp(broke.restRot.y, 0, e);
+      F.group.rotation.z = lerp(broke.restRot.z, 0, e);
+      pivotAt(H, lerp(broke.halfRz, 0, e));
+      H.group.rotation.x = -0.06;
+      if(u >= 1){
+        F.group.position.copy(F.home);
+        F.group.rotation.set(-0.06, 0, 0);
+        H.group.position.copy(H.home);
+        H.group.rotation.set(-0.06, 0, 0);
+        broke = null;
+      }
+      return true;
+    }
+
+    /* --- падение целиком --- */
+    const F = broke.full;
+    if(el <= FALL_MS){
+      const u = el/FALL_MS;
+      /* по вертикали — свободное падение, по горизонтали снос наружу */
+      const drop = (F.home.y - (GROUND_Y + AR_D/2)) * u*u;
+      F.group.position.set(
+        F.home.x + F.dir*0.34*u,
+        F.home.y - drop,
+        F.home.z + 0.30*u);
+      /* валится на бок: разворот вокруг длинной оси + доворот по рысканью */
+      F.group.rotation.x = -0.06 + (Math.PI/2 + 0.06) * easeInOutCubic(u);
+      F.group.rotation.y = 0.30*u*u;
+      F.group.rotation.z = F.dir*0.16*u;
+      busy = true;
+    } else if(!broke.landed){
+      broke.landed = true;
+      /* лёгкий подскок и успокоение — считаем один раз, дальше стоит */
+      F.group.position.set(F.home.x + F.dir*0.36, GROUND_Y + AR_D/2, F.home.z + 0.32);
+      F.group.rotation.set(Math.PI/2, 0.33, F.dir*0.17);
+      broke.restPos = F.group.position.clone();
+      broke.restRot = { x:F.group.rotation.x, y:F.group.rotation.y, z:F.group.rotation.z };
+      /* удар о землю поднимает пыль */
+      for(let i=0;i<5;i++)
+        emit(F.group.position.x, GROUND_Y + 0.05, F.group.position.z, 0.30, 0.28);
+      busy = true;
+    }
+
+    /* --- вторая: обрывается наполовину и качается --- */
+    const H = broke.half;
+    /* знак задаёт сторону: нос всегда идёт ВНИЗ, наружу от диска */
+    const sgn = -H.dir;
+    if(el <= FALL_MS*0.62){
+      const u = el/(FALL_MS*0.62);
+      pivotAt(H, sgn*HALF_TILT*easeInOutCubic(u));
+      H.group.rotation.x = -0.06;
+      broke.halfRz = sgn*HALF_TILT*easeInOutCubic(u);
+      busy = true;
+    } else if(el < WOBBLE_MS){
+      /* затухающий маятник вокруг уцелевшего крепления */
+      const u = (el - FALL_MS*0.62)/(WOBBLE_MS - FALL_MS*0.62);
+      const amp = 0.13*Math.exp(-3.4*u);
+      const ang = Math.min(HALF_MAX, HALF_TILT + amp*Math.sin(u*22));
+      const rz = sgn*ang;
+      pivotAt(H, rz);
+      H.group.rotation.x = -0.06;
+      broke.halfRz = rz;
+      busy = true;
+    } else if(broke.halfRz !== sgn*HALF_TILT){
+      pivotAt(H, sgn*HALF_TILT);
+      H.group.rotation.x = -0.06;
+      broke.halfRz = sgn*HALF_TILT;
+      busy = true;
+    }
+    return busy;
+  }
+
+  /* =========================================================
      Ввод: hover / press по деревянным стрелкам (raycast)
      ========================================================= */
   const ndc = { x:0, y:0 };
@@ -1133,7 +1796,8 @@ window.MECHANISM = (function(){
     mouseNX = clamp(ndc.x, -1, 1); mouseNY = clamp(ndc.y, -1, 1);
     ray.setFromCamera(ndc, camera);
     let hit = null;
-    for(let i=0;i<arrows.length;i++){
+    /* сломанные стрелки не кнопки: мишень не проверяем, пока не собрались */
+    for(let i=0;i<arrows.length && !broke;i++){
       if(ray.intersectObject(arrows[i].hit, false).length){ hit = arrows[i]; break; }
     }
     for(let i=0;i<arrows.length;i++) arrows[i].hover = (arrows[i] === hit);
@@ -1156,7 +1820,12 @@ window.MECHANISM = (function(){
     el.addEventListener('pointerdown', (e)=>{
       const a = pick(e);
       if(!a) return;
-      if(a.dir){ a.press = true; if(onStepCb) onStepCb(a.dir); }   // стрелка
+      if(a.dir){                                                    // стрелка
+        /* нажатие считаем всегда, но если оно оказалось последней
+           каплей — шаг уже не делаем: стрелка отвалилась */
+        if(noteClick(a)) return;
+        a.press = true; if(onStepCb) onStepCb(a.dir);
+      }
       else if(onPlateCb) onPlateCb(a.index);                        // табличка
     });
     const release = ()=>{ for(let i=0;i<arrows.length;i++) arrows[i].press = false; };
@@ -1181,7 +1850,7 @@ window.MECHANISM = (function(){
     reduced = !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
     onStepCb  = (o && o.onStep)  || null;
     onPlateCb = (o && o.onPlate) || null;
-    colWood = new THREE.Color(WOOD); colHot = new THREE.Color(WOOD_HOVER);
+    colWood = new THREE.Color(WOOD); colHot = new THREE.Color(WOOD_HOT);
 
     const w = host.clientWidth || 620, h = host.clientHeight || 400;
     scene = new THREE.Scene();
@@ -1216,9 +1885,17 @@ window.MECHANISM = (function(){
 
   /* хук для автотестов/отладки (в проде безвреден) */
   function debug(){
-    return { scene, camera, renderer, mech, mainGear, arrows, secondary, plates,
+    return { THREE, scene, camera, renderer, mech, mainGear, arrows, secondary, spinners, plates,
              angle, target, stepDeg:STEP_DEG, teeth:TEETH, labelText,
-             camEl:CAM_EL, plateR:PLATE_R, probes, fitX:FIT_X, fitY:FIT_Y };
+             camEl:CAM_EL, plateR:PLATE_R, probes, fitX:FIT_X, fitY:FIT_Y,
+             asym:{ seed:ASYM_SEED, chip:TOOTH_CHIP, worn:TOOTH_WORN,
+                    spokeOff:SPOKE_OFF, spokeW:SPOKE_W },
+             rage:{ n:RAGE_N, ms:RAGE_MS, broke:!!broke, puffs:puffs.length,
+                    ground:GROUND_Y, recoverMs:RECOVER_MS,
+                    tilt:HALF_TILT, tiltMax:HALF_MAX,
+                    hinge:{ x:HINGE_X, y:HINGE_Y },
+                    full: broke ? broke.full.dir : 0 },
+             shaftTop:SHAFT_TOP, stack:STACK, startBreak, pivotAt };
   }
 
   return { init, step, setLabel, setLabels, resize: fit,

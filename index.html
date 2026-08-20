@@ -76,6 +76,10 @@
        экранах вместо него работают боковые колонки в полях страницы. -->
   <div class="tab-decor-strip" id="tabDecorStrip" aria-hidden="true"></div>
 
+  <!-- вкладка Minecraft: вместо стимпанк-декора настоящая 3D-сцена —
+       Стив ломает блок. В потоке, на всех размерах экрана. -->
+  <div class="mc-stage" id="mcStage" aria-hidden="true"></div>
+
   <section class="content" id="content" aria-live="polite"></section>
 
 </main>
@@ -93,13 +97,29 @@
 <!-- боковая декоративная шестерёнка (слабо крутится + сильно при скролле) -->
 <div class="side-gear" id="drumGear" aria-hidden="true"></div>
 
-<!-- декор вкладки: у каждого раздела свои крутящиеся детали,
-     ржавые трубы и капающие капли (js/decor.js) -->
+<!-- декор вкладки: у каждого раздела свои крутящиеся детали и ржавые
+     трубы (js/decor.js). Слой ПРИКЛЕЕН К СТРАНИЦЕ, как и .side-gear:
+     position:absolute, поэтому при скролле детали уезжают вместе с
+     контентом, а не висят перед камерой. -->
 <div class="tab-decor" id="tabDecor" aria-hidden="true"></div>
+
+<!-- полноэкранный просмотр вложений: кадр целиком, стрелки по бокам
+     (у галереи), крестик и ESC — закрыть -->
+<div class="lightbox" id="lightbox" role="dialog" aria-modal="true" aria-hidden="true">
+  <button class="lb-close" type="button" aria-label="Закрыть">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"
+         stroke-linecap="round"><path d="M6 6 L18 18 M18 6 L6 18"/></svg>
+  </button>
+  <button class="lb-arrow lb-prev" type="button" data-dir="-1" aria-label="Предыдущее">‹</button>
+  <div class="lb-frame"></div>
+  <button class="lb-arrow lb-next" type="button" data-dir="1" aria-label="Следующее">›</button>
+  <div class="lb-dots"></div>
+</div>
 
 <script src="https://unpkg.com/three@0.137.0/build/three.min.js"></script>
 <script src="js/data.js"></script>
 <script src="js/mechanism.js"></script>
+<script src="js/mc-scene.js"></script>
 <script src="js/decor.js"></script>
 <script src="js/nav.js"></script>
 </body>
