@@ -1,40 +1,43 @@
 /* =========================================================
-   MC_SCENE — 3D-сцена для вкладки Minecraft: Стив ломает блок.
-   Настоящая геометрия (Three.js), не спрайты: куб из шести
-   текстурованных граней, Стив — классическая модель из семи
-   боксов с UV из скина 64×64.
+   MC_SCENE — 3D-сцена вкладки Minecraft.
 
-   Стиль: сайт чёрно-белый скетчевый, поэтому текстуры блоков и
-   скина обесцвечены и лишь СЛЕГКА тонированы своим цветом
-   (трава зеленит, земля коричневит, кожа телесная). Пиксели
-   остаются пиксельными (NearestFilter), контуры обведены
-   чернилами — как у механизма.
+   Что происходит: столб из двух блоков (сверху трава, под ней
+   земля), на нём стоит Стив и рубит их под собой. Сломал траву —
+   упал на землю. Сломал землю — упал вниз и больше не появился
+   (до перезагрузки страницы или возврата на вкладку). По бокам
+   в невесомости медленно крутятся блоки.
 
-   Анимация: замах → удар → прогресс разрушения (трещины по
-   стадиям) → блок рассыпается на осколки → пауза → блок
-   возвращается. Цикл. Стив при этом дышит, приседает на ударе,
-   голова следит за блоком, вторая рука и ноги отыгрывают отдачу.
+   Стиль: сайт чёрно-белый скетчевый, поэтому текстуры полностью
+   обесцвечены (TINT = 0), но остаются текстурами — пиксель в
+   пиксель, NearestFilter, с чернильным контуром по рёбрам.
+
+   Трещины — настоящие destroy_stage из игры (assets/mc/tex/
+   destroy_0..9.png), наложены прямо на грани блока.
    ========================================================= */
 window.MC_SCENE = (function(){
   "use strict";
 
-  const INK   = 0x161413;
-  const PAPER = 0xf6f2e9;
-  /* Сколько родного цвета оставляем от текстуры: 0 = серое,
-     1 = как в игре. Было 0.26/0.20 — от текстур оставалась серая
-     каша, трава не читалась как трава. Держим 0.62/0.55: текстуры
-     узнаются, но остаются приглушёнными под скетч-стиль сайта. */
-  const TINT_BLOCK = 0.62;
-  const TINT_SKIN  = 0.55;
+  const INK = 0x161413;
+  /* Сколько родного цвета оставляем от текстуры: 0 = чистое
+     чёрно-белое, 1 = как в игре. Держим 0 — сайт скетчевый, цвет
+     в нём только у ржавых стрелок механизма. Текстура при этом
+     никуда не девается: рисунок травы, земли и лица читается
+     яркостью пикселей. */
+  const TINT = 0;
 
   const TEX = 'assets/mc/tex/';
+  const CRACK_N = 10;                    // destroy_0..destroy_9
+
   let THREE = null;
   let host = null, renderer = null, scene = null, camera = null;
-  let root = null, steve = null, block = null, crackMesh = null;
-  let shards = [], parts = {};
+  let root = null, steve = null, parts = {};
+  let column = [], floaters = [], shards = [], dust = [];
+  let crackMesh = null, crackTex = [];
   let raf = 0, running = false, reduced = false, visible = false;
-  let lastT = 0, phase = 'swing', phaseT = 0, hits = 0, dust = [];
-  let loaded = 0, ready = false;
+  let lastT = 0, phase = 'mine', phaseT = 0, hits = 0;
+  let target = 0;                        // 0 — трава, 1 — земля
+  let fallFrom = 0, fallTo = 0, steveY = 0;
+  let loaded = 0, need = 0, ready = false;
 
   const clamp = (v,a,b)=> v<a?a:(v>b?b:v);
   const lerp  = (a,b,t)=> a+(b-a)*t;
@@ -43,9 +46,9 @@ window.MC_SCENE = (function(){
   const easeIn  = (t)=> t*t*t;
 
   /* ---------------------------------------------------------
-     Загрузка текстуры + обесцвечивание на canvas.
-     Возвращаем CanvasTexture: так не нужны отдельные файлы под
-     обесцвеченный вариант, и степень тонирования можно менять.
+     Текстура: грузим файл и обесцвечиваем на canvas. Отдельные
+     ч/б файлы не нужны, а степень обесцвечивания правится одной
+     константой.
      --------------------------------------------------------- */
   function loadTex(file, tint, cb){
     const img = new Image();
@@ -58,18 +61,17 @@ window.MC_SCENE = (function(){
       const d = x.getImageData(0, 0, W, H), a = d.data;
       for(let i=0;i<a.length;i+=4){
         if(a[i+3] === 0) continue;
-        /* яркость по восприятию, потом подмешиваем родной цвет */
         const l = 0.299*a[i] + 0.587*a[i+1] + 0.114*a[i+2];
-        /* тянем к бумаге, но слабее, чем раньше (было 46 + l*0.80):
-           сильный подъём чёрного съедал контраст пикселей */
-        const b = 26 + l*0.90;
+        /* слегка поджимаем к бумаге, иначе тёмные пиксели травы
+           сливаются в чёрное пятно и текстура пропадает */
+        const b = 30 + l*0.86;
         a[i]   = clamp(b + (a[i]  -l)*tint, 0, 255)|0;
         a[i+1] = clamp(b + (a[i+1]-l)*tint, 0, 255)|0;
         a[i+2] = clamp(b + (a[i+2]-l)*tint, 0, 255)|0;
       }
       x.putImageData(d, 0, 0);
       const t = new THREE.CanvasTexture(c);
-      t.magFilter = THREE.NearestFilter;      // пиксели остаются пикселями
+      t.magFilter = THREE.NearestFilter;
       t.minFilter = THREE.NearestFilter;
       t.generateMipmaps = false;
       cb(t);
@@ -77,34 +79,45 @@ window.MC_SCENE = (function(){
     img.onerror = ()=> cb(null);
     img.src = TEX + file;
   }
+  /* трещины грузим как есть: они уже чернильные и с альфой */
+  function loadRaw(file, cb){
+    const img = new Image();
+    img.onload = ()=>{
+      const t = new THREE.Texture(img);
+      t.magFilter = THREE.NearestFilter;
+      t.minFilter = THREE.NearestFilter;
+      t.generateMipmaps = false;
+      t.needsUpdate = true;
+      cb(t);
+    };
+    img.onerror = ()=> cb(null);
+    img.src = TEX + file;
+  }
 
   /* ---------------------------------------------------------
-     UV для боксов Minecraft-модели.
-     Скин 64×64: у каждой части свой прямоугольник развёртки —
-     четыре боковые грани в ряд и две (верх/низ) над ними.
+     UV частей тела по скину 64×64.
+     Развёртка идёт лентой вокруг части: право, перед, лево, зад.
      Порядок групп у BoxGeometry: +X, -X, +Y, -Y, +Z, -Z.
-     В скине +X — это ЛЕВАЯ для зрителя грань, поэтому право/лево
-     в раскладке зеркальны относительно интуиции.
+     Модель смотрит в +Z, ось +Y вверх — значит ПРАВАЯ рука
+     персонажа в мире это −X, а +X — его левый бок. Раньше здесь
+     стояло наоборот, и боковые грани головы вставали задом
+     наперёд: чубчик заворачивался не в ту сторону.
      --------------------------------------------------------- */
   function skinUV(geo, o){
-    /* o: {x,y,w,h,d} — левый-верхний угол развёртки и размеры части
-       в пикселях скина (как в вики: w=ширина, h=высота, d=глубина) */
+    /* o: {x,y,w,h,d} — угол развёртки и размеры части в пикселях */
     const S = 64;
     const uv = geo.attributes.uv;
-    /* прямоугольники в пикселях: [x0,y0,w,h] для каждой группы */
     const R = {
-      px: [o.x,               o.y + o.d, o.d, o.h],   // +X (для зрителя левая)
-      nx: [o.x + o.d + o.w,   o.y + o.d, o.d, o.h],   // -X
-      py: [o.x + o.d,         o.y,       o.w, o.d],   // верх
-      ny: [o.x + o.d + o.w,   o.y,       o.w, o.d],   // низ
-      pz: [o.x + o.d,         o.y + o.d, o.w, o.h],   // передняя
-      nz: [o.x + o.d*2 + o.w, o.y + o.d, o.w, o.h]    // задняя
+      px: [o.x + o.d + o.w, o.y + o.d, o.d, o.h],   // +X — левый бок
+      nx: [o.x,             o.y + o.d, o.d, o.h],   // -X — правый бок
+      py: [o.x + o.d,       o.y,       o.w, o.d],   // верх
+      ny: [o.x + o.d + o.w, o.y,       o.w, o.d],   // низ
+      pz: [o.x + o.d,       o.y + o.d, o.w, o.h],   // перед
+      nz: [o.x + o.d*2+o.w, o.y + o.d, o.w, o.h]    // зад
     };
-    const order = ['px','nx','py','ny','pz','nz'];
-    order.forEach((k, gi)=>{
+    ['px','nx','py','ny','pz','nz'].forEach((k, gi)=>{
       const r = R[k];
       const u0 = r[0]/S, u1 = (r[0]+r[2])/S;
-      /* v считаем от низа: текстура читается сверху, UV — снизу */
       const v0 = 1 - (r[1]+r[3])/S, v1 = 1 - r[1]/S;
       const base = gi*4;
       /* порядок вершин грани у BoxGeometry: ЛВ, ПВ, ЛН, ПН */
@@ -116,318 +129,287 @@ window.MC_SCENE = (function(){
     uv.needsUpdate = true;
   }
 
-  /* контур части: чернильные рёбра, как у механизма */
+  /* чернильный контур по рёбрам — как у механизма */
   function inked(mesh, soft){
-    const e = new THREE.LineSegments(
+    mesh.add(new THREE.LineSegments(
       new THREE.EdgesGeometry(mesh.geometry),
       new THREE.LineBasicMaterial({ color:INK, transparent:true,
-                                    opacity: soft ? 0.42 : 0.80 }));
-    mesh.add(e);
+                                    opacity: soft ? 0.44 : 0.82 })));
     return mesh;
   }
 
-  /* одна часть тела: бокс нужного размера с UV из скина.
-     pivot — куда посадить точку вращения (плечо/бедро сверху). */
-  function part(mat, size, uvBox, pivotTop){
-    const U = 1/16;                            // 1 пиксель Minecraft = 1/16 юнита
+  const U = 1/16;                        // 1 пиксель модели = 1/16 юнита
+
+  /* Часть тела. pivotAt — где посадить точку вращения:
+       'top'  — сверху (плечо, бедро),
+       'neck' — снизу (голова крутится в шее, а не вокруг центра;
+                иначе при повороте она съезжает с плеч и между
+                головой и телом открывается щель).           */
+  function part(mat, size, uvBox, pivotAt){
     const g = new THREE.BoxGeometry(size[0]*U, size[1]*U, size[2]*U);
     skinUV(g, uvBox);
     const m = new THREE.Mesh(g, mat);
     inked(m);
+    if(pivotAt === 'top')  m.position.y = -size[1]*U/2;
+    if(pivotAt === 'neck') m.position.y =  size[1]*U/2;
     const pivot = new THREE.Group();
-    /* сдвигаем меш так, чтобы вращение шло от верха части */
-    if(pivotTop) m.position.y = -size[1]*U/2;
     pivot.add(m);
     return { pivot, mesh:m };
   }
-
   /* ---------------------------------------------------------
      Стив: голова 8×8×8, тело 8×12×4, руки и ноги 4×12×4.
-     Развёртки — стандартные для скина 64×64 (только базовый слой,
-     второго в этом скине нет).
+     Начало координат группы — под ногами, чтобы фигуру можно было
+     ставить прямо на верхнюю грань блока.
+
+     Оснастка: руки и голова висят НА ТЕЛЕ, а не на группе. Тогда
+     наклон корпуса уводит вниз и плечи, и голову — без этого удар
+     себе под ноги не собрать: плечо стояло бы на месте, и рука
+     махала бы в воздух перед собой.
      --------------------------------------------------------- */
-  const U = 1/16;
-  function buildSteve(skinTex){
+  function buildSteve(skin){
     const mat = new THREE.MeshLambertMaterial({
-      map:skinTex, transparent:true, alphaTest:0.5 });
+      map:skin, transparent:true, alphaTest:0.5 });
     const g = new THREE.Group();
 
-    const head  = part(mat, [8,8,8],  { x:0,  y:0,  w:8, h:8, d:8 }, false);
-    const body  = part(mat, [8,12,4],  { x:16, y:16, w:8, h:12, d:4 }, false);
-    const armR  = part(mat, [4,12,4],  { x:40, y:16, w:4, h:12, d:4 }, true);
-    const armL  = part(mat, [4,12,4],  { x:32, y:48, w:4, h:12, d:4 }, true);
-    const legR  = part(mat, [4,12,4],  { x:0,  y:16, w:4, h:12, d:4 }, true);
-    const legL  = part(mat, [4,12,4],  { x:16, y:48, w:4, h:12, d:4 }, true);
+    /* 'neck' и 'hip' — одно и то же: меш стоит ВЫШЕ точки вращения */
+    const head = part(mat, [8,8,8],  { x:0,  y:0,  w:8, h:8,  d:8 }, 'neck');
+    const body = part(mat, [8,12,4], { x:16, y:16, w:8, h:12, d:4 }, 'neck');
+    const armR = part(mat, [4,12,4], { x:40, y:16, w:4, h:12, d:4 }, 'top');
+    const armL = part(mat, [4,12,4], { x:32, y:48, w:4, h:12, d:4 }, 'top');
+    const legR = part(mat, [4,12,4], { x:0,  y:16, w:4, h:12, d:4 }, 'top');
+    const legL = part(mat, [4,12,4], { x:16, y:48, w:4, h:12, d:4 }, 'top');
 
-    /* сборка по высотам: ноги 12px, тело 12px, голова 8px */
+    /* Высоты: ноги 0..12, тело 12..24, голова 24..32.
+       Правая рука персонажа — со стороны −X (модель смотрит в +Z). */
     legR.pivot.position.set(-2*U, 12*U, 0);
     legL.pivot.position.set( 2*U, 12*U, 0);
-    body.pivot.position.set(0, 12*U + 6*U, 0);
-    armR.pivot.position.set(-6*U, 12*U + 12*U, 0);
-    armL.pivot.position.set( 6*U, 12*U + 12*U, 0);
-    head.pivot.position.set(0, 12*U + 12*U + 4*U, 0);
+    body.pivot.position.set(0, 12*U, 0);          // таз: корпус гнётся здесь
+    /* плечи и шея — на 12 пикселей выше таза, уже внутри тела */
+    armR.pivot.position.set(-6*U, 12*U, 0);
+    armL.pivot.position.set( 6*U, 12*U, 0);
+    head.pivot.position.set(0, 12*U, 0);
+    [armR, armL, head].forEach(p=> body.pivot.add(p.pivot));
 
-    [legR, legL, body, armR, armL, head].forEach(p=> g.add(p.pivot));
+    g.add(legR.pivot); g.add(legL.pivot); g.add(body.pivot);
     parts = { head, body, armR, armL, legR, legL };
     return g;
   }
 
   /* ---------------------------------------------------------
-     Блок: куб 1×1×1 с шестью гранями. Трава — бок/верх/низ разные,
-     камень и земля — одна текстура на все грани.
+     Блок 1×1×1. Трава — бока/верх/низ разные, земля и камень
+     цельные со всех сторон.
      --------------------------------------------------------- */
-  function buildBlock(tex){
-    /* порядок групп: +X, -X, +Y, -Y, +Z, -Z */
-    const side = tex.side, top = tex.top, bot = tex.bottom;
-    const mk = (t)=> new THREE.MeshLambertMaterial({ map:t });
-    const mats = [mk(side), mk(side), mk(top), mk(bot), mk(side), mk(side)];
-    const g = new THREE.BoxGeometry(1, 1, 1);
-    const m = new THREE.Mesh(g, mats);
-    inked(m);
+  function blockMats(T, kind){
+    const lam = (t)=> new THREE.MeshLambertMaterial({ map:t });
+    if(kind === 'grass')
+      return [T.side, T.side, T.top, T.dirt, T.side, T.side].map(lam);
+    const t = kind === 'stone' ? T.stone : T.dirt;
+    return lam(t);
+  }
+  function buildBlock(T, kind, soft){
+    const m = new THREE.Mesh(new THREE.BoxGeometry(1,1,1), blockMats(T, kind));
+    inked(m, soft);
     return m;
   }
 
   /* ---------------------------------------------------------
-     Трещины: рисуем сами (в игре это destroy_stage_0..9).
-     Ветвящиеся линии от центра, каждая стадия добавляет новые —
-     поэтому рисунок «растёт», а не подменяется целиком.
-     Накладываем чуть увеличенным кубом поверх блока.
+     Трещины. Слой чуть больше блока, одна текстура на все грани —
+     как в игре: разрушение видно с любой стороны.
+     polygonOffset прижимает слой к грани, иначе он мерцает.
      --------------------------------------------------------- */
-  const CRACK_STAGES = 8;
-  function texCracks(stage){
-    const S = 128;
-    const c = document.createElement('canvas'); c.width = S; c.height = S;
-    const x = c.getContext('2d');
-    if(stage <= 0){
-      return null;
-    }
-    /* детерминированно: одна и та же трещина на каждой стадии */
-    let seed = 1337;
-    const rnd = ()=>{ seed = (seed*1664525+1013904223)>>>0; return seed/4294967296; };
-    x.strokeStyle = 'rgba(22,20,19,0.86)';
-    x.lineCap = 'round';
-    const branches = 5;
-    for(let b=0;b<branches;b++){
-      const total = 3 + (b%3);                 // сегментов в ветке
-      /* сколько сегментов этой ветки уже проявилось */
-      const grown = clamp(Math.round(total*stage/CRACK_STAGES*1.6) - (b>2?1:0), 0, total);
-      if(grown <= 0){ for(let k=0;k<total;k++){ rnd(); rnd(); } continue; }
-      let px = S/2 + (rnd()-0.5)*10, py = S/2 + (rnd()-0.5)*10;
-      let ang = b/branches*Math.PI*2 + rnd()*0.7;
-      x.lineWidth = 3.0;
-      for(let k=0;k<total;k++){
-        const len = 12 + rnd()*16;
-        const nx = px + Math.cos(ang)*len, ny = py + Math.sin(ang)*len;
-        if(k < grown){
-          x.beginPath(); x.moveTo(px, py); x.lineTo(nx, ny); x.stroke();
-        }
-        px = nx; py = ny;
-        ang += (rnd()-0.5)*1.1;
-        x.lineWidth = Math.max(1.4, x.lineWidth - 0.5);
-      }
-    }
-    const t = new THREE.CanvasTexture(c);
-    t.magFilter = THREE.NearestFilter;
-    t.minFilter = THREE.NearestFilter;
-    t.generateMipmaps = false;
-    return t;
-  }
-  let crackTex = [];
-  function buildCracks(){
-    crackTex = [];
-    for(let i=0;i<=CRACK_STAGES;i++) crackTex.push(texCracks(i));
+  function buildCrackLayer(){
     const m = new THREE.Mesh(
-      new THREE.BoxGeometry(1.004, 1.004, 1.004),
-      new THREE.MeshBasicMaterial({ transparent:true, opacity:0,
-                                    depthWrite:false }));
+      new THREE.BoxGeometry(1.002, 1.002, 1.002),
+      new THREE.MeshBasicMaterial({
+        transparent:true, depthWrite:false, opacity:1,
+        polygonOffset:true, polygonOffsetFactor:-3, polygonOffsetUnits:-3 }));
+    m.visible = false;
+    m.renderOrder = 2;
     return m;
   }
+  /* stage: -1 — снять слой, 0..9 — стадия из destroy_N.png */
   function setCrack(stage){
     if(!crackMesh) return;
-    const t = crackTex[clamp(stage, 0, CRACK_STAGES)];
-    /* на нулевой стадии слой не нужен вообще — выключаем меш,
-       а не оставляем прозрачный лишним вызовом отрисовки */
-    crackMesh.visible = !!t;
-    if(!t) return;
+    if(stage < 0 || !crackTex.length){ crackMesh.visible = false; return; }
+    const t = crackTex[clamp(stage, 0, crackTex.length-1)];
+    if(!t){ crackMesh.visible = false; return; }
+    crackMesh.visible = true;
     crackMesh.material.map = t;
-    crackMesh.material.opacity = 0.92;
     crackMesh.material.needsUpdate = true;
   }
-
   /* ---------------------------------------------------------
-     Осколки: блок рассыпается на мелкие кубики с теми же
-     текстурами. Разлетаются с гравитацией и растворяются.
+     Компоновка. Столб из двух блоков в начале координат: трава по
+     центру y=0 (верх на 0.5), под ней земля y=-1. Стив стоит на
+     верхней грани чуть позади центра — так рука на махе уходит
+     вниз мимо переднего ребра блока, а не в него.
      --------------------------------------------------------- */
-  function spawnShards(){
-    const mats = block.material;
-    for(let i=0;i<14;i++){
-      const s = 0.10 + Math.random()*0.13;
-      const m = new THREE.Mesh(
-        new THREE.BoxGeometry(s, s, s),
-        new THREE.MeshLambertMaterial({ map: mats[(Math.random()*6)|0].map,
-                                        transparent:true }));
-      m.position.copy(block.position);
-      m.position.x += (Math.random()-0.5)*0.8;
-      m.position.y += (Math.random()-0.5)*0.8;
-      m.position.z += (Math.random()-0.5)*0.8;
+  const GRASS_Y = 0, DIRT_Y = -1;
+  const FEET = [GRASS_Y + 0.5, DIRT_Y + 0.5];    // куда встают ноги
+  const FEET_GONE = -5.6;                        // ушёл за кадр
+  const STEVE_X = -0.05, STEVE_Z = -0.14;
+  const STEVE_RY = 0.55;                         // трёхчетвертной вид
+
+  const MINE_MS  = 2300;    // сколько ломается один блок
+  const SWING_MS = 400;     // один замах
+  const LAND_MS  = 300;     // приземление
+  const GRAV     = 11.0;
+
+  /* Углы руки заданы ОТ МИРОВОЙ ВЕРТИКАЛИ: 0 — висит вниз, плюс —
+     вперёд к камере, минус — назад за спину. Рука висит на теле,
+     поэтому в локальный угол переводим вычитанием наклона
+     корпуса: armX = total − lean.
+
+     Кисть до верхней грани блока НЕ ДОХОДИТ, и это правильно.
+     Плечо стоит на 2.0 (ноги 0.5 + 1.5), рука длиной 0.75, значит
+     ниже 1.25 кисть не опускается — а грань, на которой Стив
+     стоит, лежит на 0.5. Замер перебором: чтобы дотянуться, нужен
+     наклон 1.2–1.35 рад, при котором макушка падает до 1.4 —
+     фигура складывается лицом вниз. В самой игре то же самое: рубя
+     блок под ногами, рука до него не достаёт, связь показывают
+     трещины на грани и пыль из-под кисти. */
+  const TOT_REST = 0.30, TOT_UP = -2.30, TOT_DEEP = 0.30;
+  const LEAN_REST = 0.30, LEAN_UP = 0.18, LEAN_HIT = 0.74;
+  const STRIKE = 0.55;      // доля замаха, на которой приходит удар
+
+  const targetY = ()=> target === 0 ? GRASS_Y : DIRT_Y;
+
+  /* поза добычи: t = 0..1 внутри одного замаха */
+  function poseMine(t){
+    const P = parts;
+    let tot, lean;
+    if(t < STRIKE){
+      const u = ease(t/STRIKE);                  // занос вверх-назад
+      tot  = lerp(TOT_REST, TOT_UP, u);
+      lean = lerp(LEAN_REST, LEAN_UP, u);        // корпус выпрямляется
+    } else {
+      const u = (t - STRIKE)/(1 - STRIKE);
+      if(u < 0.34){
+        const k = easeIn(u/0.34);                // мах вниз, самая быстрая часть
+        tot  = lerp(TOT_UP, TOT_DEEP, k);
+        lean = lerp(LEAN_UP, LEAN_HIT, k);
+      } else {
+        tot  = TOT_DEEP;
+        lean = lerp(LEAN_HIT, LEAN_REST, ease((u - 0.34)/0.66));
+      }
+    }
+    const k = (t - STRIKE - 0.06)/0.09;
+    const hit = t < STRIKE ? 0 : Math.exp(-(k*k));   // узкий пик удара
+    P.body.pivot.rotation.x = lean + hit*0.06;
+    P.body.pivot.rotation.y = -0.10 + (lean - LEAN_REST)*0.18;
+    P.armR.pivot.rotation.x = tot - lean;
+    P.armR.pivot.rotation.z = -0.10 - 0.10*Math.sin(Math.min(t/STRIKE,1)*Math.PI);
+    P.armL.pivot.rotation.x = lerp(0.12, -0.26, clamp((lean-LEAN_UP)/0.56, 0, 1));
+    P.armL.pivot.rotation.z = 0.12;
+    P.head.pivot.rotation.x = 0.16 + hit*0.10;   // смотрит вниз на блок
+    P.head.pivot.rotation.y = 0.06;
+    P.legR.pivot.rotation.x = -0.10 - hit*0.10;
+    P.legL.pivot.rotation.x =  0.12 + hit*0.06;
+    steve.position.y = steveY - hit*0.05;
+  }
+  /* в полёте: руки вверх-вразлёт, ноги поджаты, корпус завалился */
+  function poseFall(t, now){
+    const P = parts, e = easeOut(clamp(t*2.2, 0, 1));
+    const w = Math.sin(now/150)*0.10;                 // болтанка
+    P.body.pivot.rotation.x = lerp(LEAN_REST, -0.16, e);
+    P.body.pivot.rotation.y = -0.10 + w*0.5;
+    P.armR.pivot.rotation.x = lerp(TOT_DEEP, -2.05, e) + w;
+    P.armR.pivot.rotation.z = -0.10 - e*0.55;
+    P.armL.pivot.rotation.x = lerp(0.12, -1.95, e) - w;
+    P.armL.pivot.rotation.z = 0.12 + e*0.60;
+    P.head.pivot.rotation.x = lerp(0.16, -0.22, e);   // задрал голову
+    P.head.pivot.rotation.y = 0.06 - w*0.6;
+    P.legR.pivot.rotation.x = lerp(-0.10, -0.62, e) + w*0.6;
+    P.legL.pivot.rotation.x = lerp( 0.12,  0.34, e) - w*0.6;
+    steve.position.y = steveY;
+  }
+  /* приземлился: присел и разогнулся */
+  function poseLand(t){
+    const P = parts, s = Math.sin(clamp(t,0,1)*Math.PI);
+    P.body.pivot.rotation.x = LEAN_REST + s*0.20;
+    P.body.pivot.rotation.y = -0.10;
+    P.armR.pivot.rotation.x = TOT_DEEP - LEAN_REST - s*0.42;
+    P.armR.pivot.rotation.z = -0.10 - s*0.18;
+    P.armL.pivot.rotation.x = 0.12 - s*0.40;
+    P.armL.pivot.rotation.z = 0.12 + s*0.18;
+    P.head.pivot.rotation.x = 0.16 + s*0.16;
+    P.head.pivot.rotation.y = 0.06;
+    P.legR.pivot.rotation.x = -0.10 - s*0.30;
+    P.legL.pivot.rotation.x =  0.12 + s*0.26;
+    steve.position.y = steveY - s*0.10;               // присед
+  }
+
+  /* пыль из-под кисти: верхняя грань добываемого блока */
+  function puff(){
+    const y = targetY() + 0.52;
+    const n = 4 + ((Math.random()*3)|0);
+    for(let i=0;i<n;i++){
+      const s = 0.035 + Math.random()*0.05;
+      const m = new THREE.Mesh(new THREE.BoxGeometry(s,s,s),
+        new THREE.MeshBasicMaterial({ color:INK, transparent:true, opacity:0.32 }));
+      m.position.set((Math.random()-0.5)*0.7, y, 0.10 + (Math.random()-0.5)*0.7);
+      root.add(m);
+      dust.push({ m, life:0, ttl:320 + Math.random()*240,
+        vx:(Math.random()-0.5)*0.9, vy:0.5 + Math.random()*0.7,
+        vz:0.25 + Math.random()*0.6 });
+    }
+  }
+
+  /* блок рассыпался: осколки с его же текстурой */
+  function spawnShards(mesh){
+    const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
+    for(let i=0;i<16;i++){
+      const s = 0.09 + Math.random()*0.13;
+      const m = new THREE.Mesh(new THREE.BoxGeometry(s,s,s),
+        new THREE.MeshLambertMaterial({
+          map: mats[(Math.random()*mats.length)|0].map, transparent:true }));
+      m.position.copy(mesh.position);
+      m.position.x += (Math.random()-0.5)*0.85;
+      m.position.y += (Math.random()-0.5)*0.85;
+      m.position.z += (Math.random()-0.5)*0.85;
       m.rotation.set(Math.random()*3, Math.random()*3, Math.random()*3);
       root.add(m);
-      shards.push({ m, life:0, ttl: 700 + Math.random()*500,
-        vx:(Math.random()-0.5)*1.7, vy: 0.9 + Math.random()*1.5,
-        vz:(Math.random()-0.5)*1.7,
+      shards.push({ m, life:0, ttl:900 + Math.random()*600,
+        vx:(Math.random()-0.5)*2.0, vy:0.7 + Math.random()*1.6,
+        vz:(Math.random()-0.5)*2.0,
         wx:(Math.random()-0.5)*9, wy:(Math.random()-0.5)*9 });
     }
   }
-  function clearShards(){
-    shards.forEach(s=>{ root.remove(s.m); s.m.geometry.dispose(); s.m.material.dispose(); });
-    shards = [];
-  }
-
   /* ---------------------------------------------------------
-     Анимация. Фазы:
-       swing — замах и удар (по HITS_TO_BREAK раз), каждый удар
-               добавляет стадию трещин;
-       break — блок рассыпался, Стив отшатнулся;
-       wait  — пауза;
-       grow  — блок возвращается (масштаб от 0).
+     Цикл. Фазы:
+       mine — рубит блок под собой, трещины растут по времени
+              (как в игре: держишь кнопку — рисунок доходит до
+              destroy_9, потом блок ломается);
+       fall — падает: с травы на землю, с земли за кадр;
+       land — приземлился, присел;
+       gone — упал совсем и больше не появится.
      --------------------------------------------------------- */
-  /* Компоновка сцены. GROUND — верх плиты-земли, на нём и Стив, и блок.
-     BLOCK_X подобран так, чтобы левая грань блока оказалась под кистью
-     в момент ARM_HIT (проверено замером в браузере). */
-  const GROUND  = -0.62;
-  const STEVE_X = -0.34, STEVE_Z = -0.30;
-  /* добываемый блок — верхний в столбе из двух: низ на GROUND+1,
-     центр на GROUND+1.5, то есть на уровне плеча Стива */
-  const BLOCK_X =  0.72, BLOCK_Z =  0.02;
-  const BLOCK_Y =  GROUND + 1.5;
+  let fallV = 0, lastSwing = -1;
 
-  const HITS_TO_BREAK = CRACK_STAGES;
-  const SWING_MS = 460;         // один замах+удар
-  const BREAK_MS = 620;
-  const WAIT_MS  = 520;
-  const GROW_MS  = 380;
-
-  /* Ключевые углы правой руки. Плечо — точка вращения сверху, меш
-     висит вниз, поэтому ОТРИЦАТЕЛЬНЫЙ rotation.x уводит кисть вперёд
-     (к блоку), положительный — назад.
-     Кисть в мире описывается (замерено в браузере, отсюда и числа):
-       x(θ) = −0.472 − 0.714·sin θ,  y(θ) = 0.870 − 0.740·cos θ
-     Максимум вылета по x — при θ ≈ −π/2, там же y ≈ 0.87. Поэтому
-     добываемый блок поднят на высоту груди: удар приходит в середину
-     грани, а не скользит по верхнему ребру.
-       REST −0.30 → кисть у бедра
-       UP   −2.95 → рука занесена над головой (кисть y≈1.60)
-       HIT  −1.45 → кисть у грани, x 0.235 при грани 0.22
-       DEEP −1.56 → перебег: кисть заходит в грань на 0.022 */
-  const ARM_REST = -0.30, ARM_UP = -2.95, ARM_HIT = -1.45, ARM_DEEP = -1.56;
-
-  /* поза Стива на фазе замаха: t = 0..1 внутри одного удара */
-  function poseSwing(t){
-    const P = parts;
-    /* контакт в момент 0.58: до него — занос вверх-назад через голову,
-       после — резкий мах вниз, перебег в грань и отдача */
-    const strike = 0.58;
-    let armX;
-    if(t < strike){
-      /* занос: рука идёт вверх, к концу притормаживает (антиципация) */
-      const u = t/strike;
-      armX = lerp(ARM_REST, ARM_UP, ease(u));
-    } else {
-      const u = (t - strike)/(1 - strike);
-      if(u < 0.30){
-        /* мах: почти линейно, с ускорением — самая быстрая часть */
-        armX = lerp(ARM_UP, ARM_DEEP, easeIn(u/0.30));
-      } else {
-        /* отдача от блока обратно к бедру */
-        armX = lerp(ARM_DEEP, ARM_REST, ease((u - 0.30)/0.70));
-      }
-    }
-    P.armR.pivot.rotation.x = armX;
-    /* плечо чуть разводит в сторону на замахе — мах не плоский */
-    P.armR.pivot.rotation.z = -0.14 - 0.13*Math.sin(Math.min(t/strike,1)*Math.PI);
-
-    /* импульс удара: узкий пик сразу после контакта */
-    const k = (t - strike)/0.10;
-    const impact = t < strike ? 0 : Math.exp(-(k*k));
-
-    /* корпус: скрутка на замахе, раскрутка в удар, присед на контакте */
-    const wind = t < strike ? ease(t/strike) : 1 - ease(Math.min((t-strike)/0.34, 1));
-    P.body.pivot.rotation.y = -0.18 - wind*0.26;
-    P.body.pivot.rotation.x = 0.05 + wind*0.06 + impact*0.16;
-    P.body.pivot.rotation.z = wind*0.07;
-    /* присед на контакте и короткий выпад к блоку — вес удара */
-    root.position.y = -impact*0.06 - wind*0.02;
-    root.position.x = impact*0.055;
-
-    /* вторая рука — противофаза, отыгрывает баланс */
-    P.armL.pivot.rotation.x = lerp(0.18, 0.62, wind) - impact*0.30;
-    P.armL.pivot.rotation.z = 0.12 + wind*0.16;
-
-    /* голова: следит за точкой удара, кивок от отдачи */
-    P.head.pivot.rotation.x = 0.20 + wind*0.12 + impact*0.14;
-    P.head.pivot.rotation.y = -0.14 + wind*0.10;
-
-    /* ноги: упор, пружина на контакте */
-    P.legR.pivot.rotation.x = -0.12 - wind*0.10 - impact*0.12;
-    P.legL.pivot.rotation.x =  0.10 + wind*0.08 + impact*0.07;
+  function startMine(){
+    phase = 'mine'; phaseT = 0; lastSwing = -1;
+    const m = column[target];
+    if(m){ crackMesh.position.copy(m.position); setCrack(0); }
   }
-
-  /* отшатнулся после того, как блок рассыпался: короткий откид назад,
-     руки вверх-вразлёт, голова поднялась — «сломал» */
-  function poseBreak(t){
-    const P = parts, e = easeOut(clamp(t*1.5, 0, 1));
-    const back = Math.sin(t*Math.PI);
-    P.armR.pivot.rotation.x = lerp(ARM_DEEP, ARM_REST, e) + back*0.36;
-    P.armR.pivot.rotation.z = -0.14 - back*0.26;
-    P.armL.pivot.rotation.x = lerp(0.62, 0.18, e) + back*0.30;
-    P.armL.pivot.rotation.z = 0.12 + back*0.28;
-    P.body.pivot.rotation.x = 0.05 - back*0.18;      // разогнулся
-    P.body.pivot.rotation.y = -0.18 + back*0.12;
-    P.body.pivot.rotation.z = 0;
-    P.head.pivot.rotation.x = 0.20 - back*0.34;      // поднял голову
-    P.head.pivot.rotation.y = -0.14 + back*0.14;
-    P.legR.pivot.rotation.x = -0.12 + back*0.12;
-    P.legL.pivot.rotation.x = 0.10 - back*0.12;
-    root.position.y = back*0.02;
-    root.position.x = lerp(0.055, 0, e);          // вернулся из выпада
+  function breakTarget(){
+    const m = column[target];
+    if(m){ spawnShards(m); m.visible = false; }
+    setCrack(-1);
+    phase = 'fall'; phaseT = 0; fallV = 0;
+    fallFrom = steveY;
+    fallTo = target === 0 ? FEET[1] : FEET_GONE;
   }
-
-  /* дыхание в паузе */
-  function poseIdle(now){
-    const P = parts, b = Math.sin(now/720);
-    P.armR.pivot.rotation.x = ARM_REST + b*0.05;
-    P.armR.pivot.rotation.z = -0.14 - Math.abs(b)*0.03;
-    P.armL.pivot.rotation.x = 0.18 - b*0.05;
-    P.armL.pivot.rotation.z = 0.12 + Math.abs(b)*0.03;
-    P.body.pivot.rotation.x = 0.05;
-    P.body.pivot.rotation.y = -0.18;
-    P.body.pivot.rotation.z = 0;
-    P.head.pivot.rotation.x = 0.14 + b*0.04;
-    P.head.pivot.rotation.y = -0.14 + b*0.06;
-    P.legR.pivot.rotation.x = -0.10;
-    P.legL.pivot.rotation.x = 0.08;
-    root.position.y = b*0.008;
-    root.position.x = 0;
+  function reset(){
+    target = 0; hits = 0; fallV = 0;
+    steveY = FEET[0];
+    column.forEach(m=>{ if(m){ m.visible = true; m.scale.setScalar(1); } });
+    clearFx();
+    if(steve){ steve.visible = true; steve.position.y = steveY; }
+    startMine();
   }
-
-  /* пыль от удара — маленькие тёмные кубики у точки контакта: левая
-     грань блока, верхняя её часть (куда приходит кисть) */
-  function puff(){
-    const n = 4 + ((Math.random()*3)|0);
-    for(let i=0;i<n;i++){
-      const s = 0.04 + Math.random()*0.055;
-      const m = new THREE.Mesh(new THREE.BoxGeometry(s,s,s),
-        new THREE.MeshBasicMaterial({ color:INK, transparent:true, opacity:0.34 }));
-      /* точка контакта: левая грань, чуть ниже середины по высоте,
-         ближе к переднему краю — там и оказывается кисть */
-      m.position.set(block.position.x - 0.5,
-                     block.position.y - 0.06 + (Math.random()-0.5)*0.30,
-                     block.position.z + 0.28 + (Math.random()-0.5)*0.38);
-      root.add(m);
-      dust.push({ m, life:0, ttl:340 + Math.random()*240,
-        vx:-0.55 - Math.random()*0.7, vy:0.45 + Math.random()*0.8,
-        vz:(Math.random()-0.5)*0.8 });
-    }
+  function clearFx(){
+    shards.forEach(s=>{ root.remove(s.m); s.m.geometry.dispose(); s.m.material.dispose(); });
+    dust.forEach(d=>{ root.remove(d.m); d.m.geometry.dispose(); d.m.material.dispose(); });
+    shards = []; dust = [];
   }
 
   function tick(now){
@@ -437,44 +419,55 @@ window.MC_SCENE = (function(){
     lastT = now;
     phaseT += dt*1000;
 
-    if(phase === 'swing'){
-      const t = phaseT/SWING_MS;
-      if(t >= 1){
-        phaseT = 0; hits++;
-        setCrack(hits);
-        puff();
-        if(hits >= HITS_TO_BREAK){
-          phase = 'break';
-          setCrack(0);
-          block.visible = false; crackMesh.visible = false;
-          spawnShards();
+    if(phase === 'mine'){
+      const prog = phaseT/MINE_MS;
+      setCrack(Math.min(CRACK_N-1, (prog*CRACK_N)|0));
+      const sw = (phaseT/SWING_MS)|0;
+      const t = (phaseT % SWING_MS)/SWING_MS;
+      if(sw !== lastSwing && t >= STRIKE){ lastSwing = sw; puff(); }
+      poseMine(t);
+      if(prog >= 1) breakTarget();
+    } else if(phase === 'fall'){
+      fallV += GRAV*dt;
+      steveY -= fallV*dt;
+      if(steveY <= fallTo){
+        steveY = fallTo;
+        if(target === 0){
+          target = 1;
+          phase = 'land'; phaseT = 0;
+          const m = column[1];
+          if(m){ crackMesh.position.copy(m.position); }
+        } else {
+          phase = 'gone';
+          steve.visible = false;
         }
-      } else poseSwing(t);
-    } else if(phase === 'break'){
-      poseBreak(clamp(phaseT/BREAK_MS, 0, 1));
-      if(phaseT >= BREAK_MS){ phase = 'wait'; phaseT = 0; }
-    } else if(phase === 'wait'){
-      poseIdle(now);
-      if(phaseT >= WAIT_MS){
-        phase = 'grow'; phaseT = 0;
-        clearShards();
-        block.visible = true; crackMesh.visible = true;
-        setCrack(0); hits = 0;
       }
-    } else if(phase === 'grow'){
-      const u = clamp(phaseT/GROW_MS, 0, 1);
-      /* блок возвращается с перепрыгом — как в игре при установке */
-      const s = easeOut(u)*1.06 - (u > 0.75 ? (u-0.75)*0.24 : 0);
-      block.scale.setScalar(clamp(s, 0.001, 1.06));
-      crackMesh.scale.copy(block.scale);
-      poseIdle(now);
-      if(u >= 1){
-        block.scale.setScalar(1); crackMesh.scale.setScalar(1);
-        phase = 'swing'; phaseT = 0;
+      if(phase === 'fall'){
+        const span = Math.max(0.001, fallFrom - fallTo);
+        poseFall(clamp((fallFrom - steveY)/span, 0, 1), now);
+      } else if(phase === 'land'){
+        steve.position.y = steveY;
       }
+    } else if(phase === 'land'){
+      poseLand(phaseT/LAND_MS);
+      if(phaseT >= LAND_MS) startMine();
     }
+    /* фаза gone: Стива нет, но блоки по бокам продолжают крутиться */
 
-    /* осколки */
+    /* блоки в невесомости */
+    for(let i=0;i<floaters.length;i++){
+      const f = floaters[i];
+      f.m.rotation.x += f.wx*dt;
+      f.m.rotation.y += f.wy*dt;
+      f.m.rotation.z += f.wz*dt;
+      f.t += dt;
+      f.m.position.y = f.y0 + Math.sin(f.t*f.bs + f.ph)*f.amp;
+    }
+    stepFx(dt);
+    renderer.render(scene, camera);
+  }
+
+  function stepFx(dt){
     for(let i=shards.length-1;i>=0;i--){
       const s = shards[i];
       s.life += dt*1000;
@@ -483,16 +476,13 @@ window.MC_SCENE = (function(){
         root.remove(s.m); s.m.geometry.dispose(); s.m.material.dispose();
         shards.splice(i,1); continue;
       }
-      s.vy -= 5.2*dt;                                  // гравитация
+      s.vy -= 6.4*dt;
       s.m.position.x += s.vx*dt;
       s.m.position.y += s.vy*dt;
       s.m.position.z += s.vz*dt;
-      if(s.m.position.y < GROUND + 0.06){ s.m.position.y = GROUND + 0.06;
-        s.vy *= -0.36; s.vx *= 0.7; s.vz *= 0.7; }
       s.m.rotation.x += s.wx*dt; s.m.rotation.y += s.wy*dt;
-      s.m.material.opacity = u < 0.6 ? 1 : 1 - (u-0.6)/0.4;
+      s.m.material.opacity = u < 0.55 ? 1 : 1 - (u-0.55)/0.45;
     }
-    /* пыль */
     for(let i=dust.length-1;i>=0;i--){
       const d = dust[i];
       d.life += dt*1000;
@@ -501,174 +491,176 @@ window.MC_SCENE = (function(){
         root.remove(d.m); d.m.geometry.dispose(); d.m.material.dispose();
         dust.splice(i,1); continue;
       }
-      d.vy -= 2.4*dt;
+      d.vy -= 2.6*dt;
       d.m.position.x += d.vx*dt;
       d.m.position.y += d.vy*dt;
       d.m.position.z += d.vz*dt;
-      d.m.material.opacity = 0.34*(1-u);
+      d.m.material.opacity = 0.32*(1-u);
     }
-
-    renderer.render(scene, camera);
   }
-
   /* ---------------------------------------------------------
-     Сборка и API
+     Блоки в невесомости по бокам. Список задан руками, а не
+     случайно: композиция должна быть одна и та же при каждой
+     загрузке. Случайны только скорости вращения — они и дают
+     ощущение свободного парения.
+       [x, y, z, размер, вид]
      --------------------------------------------------------- */
-  function build(textures){
+  const FLOAT = [
+    [-4.66,  1.32, -0.55, 0.62, 'stone'],
+    [-3.45, -0.58,  0.62, 0.78, 'dirt' ],
+    [-2.58,  1.86,  0.30, 0.50, 'grass'],
+    [ 2.71,  1.68, -0.35, 0.56, 'dirt' ],
+    [ 3.65, -0.34,  0.48, 0.82, 'grass'],
+    [ 4.73,  1.10, -0.70, 0.58, 'stone'],
+  ];
+
+  function build(T){
     scene = new THREE.Scene();
     root = new THREE.Group(); scene.add(root);
 
-    /* Добываемый блок — верхний в столбе из двух. По X стоит так,
-       чтобы левая грань попала точно под кисть в момент удара. */
-    block = buildBlock(textures);
-    block.position.set(BLOCK_X, BLOCK_Y, BLOCK_Z);
-    root.add(block);
-    crackMesh = buildCracks();
-    crackMesh.position.copy(block.position);
+    /* столб: трава сверху, земля под ней */
+    const grass = buildBlock(T, 'grass');
+    grass.position.set(0, GRASS_Y, 0);
+    const dirt = buildBlock(T, 'dirt');
+    dirt.position.set(0, DIRT_Y, 0);
+    root.add(grass); root.add(dirt);
+    column = [grass, dirt];
+
+    crackMesh = buildCrackLayer();
     root.add(crackMesh);
 
-    steve = buildSteve(textures.skin);
-    /* Стив слева от блока, стоит на полу (ноги — низ фигуры).
-       Рука вращается вокруг локальной оси X, кисть ходит по локальной
-       плоскости YZ — поэтому «вперёд» у Стива смотрит НА блок:
-       поворот 74° по Y. Не ровно 90°, чтобы остался трёхчетвертной
-       вид (видно лицо и скрутку корпуса), но мах приходит в грань. */
-    steve.position.set(STEVE_X, GROUND, STEVE_Z);
-    steve.rotation.y = 74 * Math.PI/180;
+    steve = buildSteve(T.skin);
+    steve.position.set(STEVE_X, FEET[0], STEVE_Z);
+    steve.rotation.y = STEVE_RY;
     root.add(steve);
+    steveY = FEET[0];
 
-    /* Земля: не плита, а ряд настоящих блоков 1×1×1 — читается как
-       кусок мира, а не подставка. Ряд заведомо шире кадра и помечен
-       noFit, поэтому уходит за левый и правый край и не влияет на
-       вписывание (иначе он бы отжимал камеру назад). */
-    const lam = (t)=> new THREE.MeshLambertMaterial({ map:t });
-    /* трава — бока/верх/низ разные, земля и камень цельные со всех сторон */
-    const gm = [textures.side, textures.side, textures.top,
-                textures.bottom, textures.side, textures.side].map(lam);
-    const dirtM  = lam(textures.bottom);
-    const stoneM = lam(textures.stone);
-    for(let i=-5;i<=5;i++){
-      const c = new THREE.Mesh(new THREE.BoxGeometry(1,1,1), gm);
-      c.position.set(0.15 + i*1.0, GROUND - 0.5, 0);
-      inked(c, true);
-      c.userData.noFit = true;
-      root.add(c);
-    }
-    /* опора под добываемым блоком — он верхний в столбе. Земля, а не
-       трава: сверху травяной блок, под ним земля — как в игре, и сразу
-       видно, какой именно блок добывают. */
-    const base = new THREE.Mesh(new THREE.BoxGeometry(1,1,1), dirtM);
-    base.position.set(BLOCK_X, GROUND + 0.5, BLOCK_Z);
-    inked(base, true);
-    base.userData.noFit = true;
-    root.add(base);
-
-    /* пара блоков по бокам на земле — сцена читается как кусок мира,
-       а не как две фигуры в пустоте. Тоже noFit. */
-    [[-1.85, stoneM], [2.72, gm]].forEach(([x, mat])=>{
-      const c = new THREE.Mesh(new THREE.BoxGeometry(1,1,1), mat);
-      c.position.set(x, GROUND + 0.5, 0);
-      inked(c, true);
-      c.userData.noFit = true;
-      root.add(c);
+    /* парящие блоки: у каждого своя ось и скорость */
+    let seed = 20260820;
+    const rnd = ()=>{ seed = (seed*1664525 + 1013904223)>>>0; return seed/4294967296; };
+    floaters = [];
+    FLOAT.forEach(f=>{
+      const m = buildBlock(T, f[4], true);
+      m.scale.setScalar(f[3]);
+      m.position.set(f[0], f[1], f[2]);
+      m.rotation.set(rnd()*3, rnd()*3, rnd()*3);
+      m.userData.noFit = true;              // габарит считаем по списку
+      root.add(m);
+      floaters.push({ m, y0:f[1], t:rnd()*6,
+        wx:(rnd()-0.5)*0.55, wy:(rnd()-0.5)*0.55, wz:(rnd()-0.5)*0.40,
+        bs:0.5 + rnd()*0.5, ph:rnd()*6, amp:0.05 + rnd()*0.07 });
     });
 
-    scene.add(new THREE.AmbientLight(0xffffff, 0.80));
-    const key = new THREE.DirectionalLight(0xffffff, 0.40);
+    scene.add(new THREE.AmbientLight(0xffffff, 0.82));
+    const key = new THREE.DirectionalLight(0xffffff, 0.38);
     key.position.set(-2.4, 4.0, 3.2); scene.add(key);
     const fill = new THREE.DirectionalLight(0xffffff, 0.12);
     fill.position.set(2.6, -0.8, -2.2); scene.add(fill);
 
-    setCrack(0);
-    poseIdle(0);
+    startMine();
+    poseMine(0);
   }
 
   /* ---------------------------------------------------------
-     Вписывание: как у механизма — подбираем дистанцию камеры по
-     проекции габарита, а не подставляем числа руками. Тогда сцена
-     заполняет кадр на любой пропорции контейнера и ничего не
-     срезается. Габарит берём с запасом на замах руки: в позе покоя
-     он меньше, чем в движении.
+     Вписывание.
+
+     Пробники — не углы одного габарита, а список «точка + радиус».
+     Так надо из-за парящих блоков: они крутятся, и осевой габарит
+     дышал бы вместе с ними, а кадр «плавал» бы каждый кадр. Куб со
+     стороной s при любом повороте лежит внутри шара радиусом
+     s·√3/2, поэтому блок задаём центром и этим радиусом — габарит
+     получается устойчивый.
+
+     Раздувать габарит по Z нельзя: раздутие уводит углы к камере, а
+     они в перспективе проецируются шире. Из-за этого прошлый вариант
+     просил кадр на 20% больше нужного, и по краям оставалась пустая
+     бумага. Здесь радиус переводится в экранный масштаб на СВОЕЙ
+     глубине каждой точки — ровно столько места, сколько занимает.
      --------------------------------------------------------- */
-  const FIT_X = 0.92, FIT_Y = 0.88;
-  /* доля высоты кадра, оставляемая над самой верхней точкой композиции */
-  const TOP_PAD = 0.012;
-  let fitPts = null;
-  function buildFitPoints(){
-    /* Габарит только по «главному»: Стив + блок. Ряд земли помечен
-       noFit и в расчёт не идёт — он должен уходить за края кадра. */
-    root.updateMatrixWorld(true);
-    const bb = new THREE.Box3();
-    bb.expandByObject(steve);
-    bb.expandByObject(block);
-    /* Замер в браузере: макушка 1.431, кисть в верхней точке замаха
-       1.630 — рука выходит над головой на 0.199. Запас берём чуть
-       меньше этого: на пике кисть подходит к самой кромке, но не
-       срезается, а в покое над Стивом не остаётся лишней бумаги
-       (со старым 0.24 в покое пустовало 28px из 258). */
-    bb.max.y += 0.21;
-    bb.min.y -= 0.14;                       // видно верх земли под ними
-    bb.min.x -= 0.14; bb.max.x += 0.14;
-    const p = [];
+  /* Запас почти нулевой сознательно: пробники — это ГАРАНТИРОВАННАЯ
+     граница (шар вокруг каждого блока), поэтому при значении ≤1
+     срезать нечего, а кадр садится вплотную. Оставляем 1.5% на
+     толщину чернильного контура. */
+  const FIT_X = 0.985, FIT_Y = 0.985;
+  let probes = null;
+  function buildProbes(){
+    const P = [];
+    const V = (x,y,z,r)=> P.push({ p:new THREE.Vector3(x,y,z), r:r||0 });
+    /* парящие блоки: центр + полудиагональ, плюс размах покачивания */
+    FLOAT.forEach(f=> V(f[0], f[1], f[2], f[3]*Math.sqrt(3)/2 + 0.13));
+    /* столб: восемь углов двух блоков */
     for(let i=0;i<8;i++)
-      p.push(new THREE.Vector3(
-        i&1 ? bb.max.x : bb.min.x,
-        i&2 ? bb.max.y : bb.min.y,
-        i&4 ? bb.max.z : bb.min.z));
-    /* центр по горизонтали и вертикали — куда смотреть */
-    const c = bb.getCenter(new THREE.Vector3());
-    return { pts:p, center:c };
+      V(i&1?0.5:-0.5, i&2?GRASS_Y+0.5:DIRT_Y-0.5, i&4?0.5:-0.5, 0);
+    /* Стив: стоит на траве, макушка на 2.0 над ногами, на заносе
+       кисть выходит выше примерно на 0.30 */
+    for(let i=0;i<8;i++)
+      V(STEVE_X + (i&1?0.42:-0.42), FEET[0] + (i&2?2.30:0),
+        STEVE_Z + (i&4?0.42:-0.42), 0);
+    return P;
+  }
+  /* экранный габарит набора пробников при текущей камере */
+  function probeExtent(){
+    const half = Math.tan(camera.fov*Math.PI/360);
+    const v = new THREE.Vector3(), cp = new THREE.Vector3();
+    camera.getWorldPosition(cp);
+    const fwd = new THREE.Vector3();
+    camera.getWorldDirection(fwd);
+    let x0=Infinity, x1=-Infinity, y0=Infinity, y1=-Infinity;
+    for(let i=0;i<probes.length;i++){
+      const pr = probes[i];
+      v.copy(pr.p).project(camera);
+      let rx = 0, ry = 0;
+      if(pr.r){
+        /* глубина точки по оси взгляда — на ней и считаем масштаб */
+        const d = Math.max(0.05, v.set(0,0,0).copy(pr.p).sub(cp).dot(fwd));
+        ry = pr.r/(d*half);
+        rx = ry/camera.aspect;
+        v.copy(pr.p).project(camera);
+      }
+      if(v.x-rx < x0) x0 = v.x-rx;
+      if(v.x+rx > x1) x1 = v.x+rx;
+      if(v.y-ry < y0) y0 = v.y-ry;
+      if(v.y+ry > y1) y1 = v.y+ry;
+    }
+    return { x0, x1, y0, y1 };
   }
   function fit(){
     if(!renderer || !host) return;
-    const w = host.clientWidth || 560, h = host.clientHeight || 200;
-    if(!w || !h) return;                     // контейнер ещё скрыт
+    const w = host.clientWidth || 620, h = host.clientHeight || 260;
+    if(!w || !h) return;
     renderer.setSize(w, h, false);
     camera.aspect = w/h;
     camera.updateProjectionMatrix();
     if(!ready) return;
-    if(!fitPts) fitPts = buildFitPoints();
-    const C = fitPts.center;
-    /* камера чуть выше и левее, смотрит в центр композиции */
-    const dir = new THREE.Vector3(-0.16, 0.34, 1).normalize();
-    let dist = 3.2;
-    const v = new THREE.Vector3();
-    for(let it=0; it<20; it++){
-      camera.position.copy(C).addScaledVector(dir, dist);
-      camera.lookAt(C);
-      camera.updateMatrixWorld();
-      let x0=Infinity, x1=-Infinity, y0=Infinity, y1=-Infinity;
-      for(let i=0;i<fitPts.pts.length;i++){
-        v.copy(fitPts.pts[i]).project(camera);
-        if(v.x<x0)x0=v.x; if(v.x>x1)x1=v.x;
-        if(v.y<y0)y0=v.y; if(v.y>y1)y1=v.y;
-      }
-      const k = Math.max((x1-x0)/2/FIT_X, (y1-y0)/2/FIT_Y);
-      dist = clamp(dist*k, 1.6, 14);
-      if(Math.abs(k-1) < 0.003) break;
-    }
-    /* Прижимаем композицию к верху кадра.
-       Камера смотрит в центр габарита, значит центр всегда попадает в
-       центр кадра, а весь незанятый запас делится пополам. Внизу его
-       закрывает ряд земли (он noFit и уходит за кадр), а сверху
-       оставалась полоса голой бумаги — из-за неё между сценой и
-       карточками читался провал. Сдвигаем точку прицела вниз, пока
-       верх габарита не встанет на TOP_PAD от кромки. */
-    const aim = C.clone();
+    if(!probes) probes = buildProbes();
+
+    const dir = new THREE.Vector3(-0.14, 0.26, 1).normalize();
+    /* стартовый прицел — середина облака пробников */
+    const aim = new THREE.Vector3();
+    probes.forEach(pr=> aim.add(pr.p));
+    aim.divideScalar(probes.length);
+
+    let dist = 9.0;
     const half = Math.tan(camera.fov*Math.PI/360);
-    for(let it=0; it<8; it++){
+    const up = new THREE.Vector3(), right = new THREE.Vector3();
+    for(let it=0; it<26; it++){
       camera.position.copy(aim).addScaledVector(dir, dist);
       camera.lookAt(aim);
       camera.updateMatrixWorld();
-      let top = -Infinity;
-      for(let i=0;i<fitPts.pts.length;i++){
-        v.copy(fitPts.pts[i]).project(camera);
-        if(v.y>top) top = v.y;
-      }
-      const want = 1 - 2*TOP_PAD;             // NDC верхней кромки с полем
-      const d = (want - top)/2 * (2*dist*half);
-      if(Math.abs(d) < 0.004) break;
-      aim.y -= d;                             // прицел ниже — картинка выше
+      camera.updateProjectionMatrix();
+      const e = probeExtent();
+      /* масштаб: чей запас туже, тот и правит дистанцию */
+      const k = Math.max((e.x1-e.x0)/2/FIT_X, (e.y1-e.y0)/2/FIT_Y);
+      /* центровка: сдвигаем прицел так, чтобы рисунок встал ровно.
+         Смещение в NDC переводим в мир через видимую высоту на
+         дистанции камеры. */
+      const cx = (e.x0+e.x1)/2, cy = (e.y0+e.y1)/2;
+      right.setFromMatrixColumn(camera.matrixWorld, 0);
+      up.setFromMatrixColumn(camera.matrixWorld, 1);
+      aim.addScaledVector(right, cx*dist*half*camera.aspect);
+      aim.addScaledVector(up,    cy*dist*half);
+      dist = clamp(dist*k, 2.0, 30);
+      if(Math.abs(k-1) < 0.002 && Math.abs(cx) < 0.002 && Math.abs(cy) < 0.002) break;
     }
     camera.position.copy(aim).addScaledVector(dir, dist);
     camera.lookAt(aim);
@@ -693,8 +685,8 @@ window.MC_SCENE = (function(){
     reduced = !!(window.matchMedia &&
                  window.matchMedia('(prefers-reduced-motion: reduce)').matches);
 
-    const w = host.clientWidth || 560, h = host.clientHeight || 200;
-    camera = new THREE.PerspectiveCamera(38, w/h, 0.1, 40);
+    const w = host.clientWidth || 620, h = host.clientHeight || 260;
+    camera = new THREE.PerspectiveCamera(34, w/h, 0.1, 60);
     renderer = new THREE.WebGLRenderer({ alpha:true, antialias:true });
     renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
     renderer.setSize(w, h, false);
@@ -702,30 +694,29 @@ window.MC_SCENE = (function(){
     renderer.domElement.setAttribute('aria-hidden', 'true');
     host.appendChild(renderer.domElement);
 
-    /* грузим пять текстур, собираем сцену когда все готовы */
     const T = {};
     const files = [
-      ['side',   'grass_side.png', TINT_BLOCK],
-      ['top',    'grass_top.png',  TINT_BLOCK],
-      ['bottom', 'dirt.png',       TINT_BLOCK],
-      ['stone',  'stone.png',      TINT_BLOCK],
-      ['skin',   'steve.png',      TINT_SKIN]
+      ['side',  'grass_side.png'],
+      ['top',   'grass_top.png'],
+      ['dirt',  'dirt.png'],
+      ['stone', 'stone.png'],
+      ['skin',  'steve.png'],
     ];
-    files.forEach(f=>{
-      loadTex(f[1], f[2], (t)=>{
-        T[f[0]] = t; loaded++;
-        if(loaded < files.length) return;
-        if(!T.side || !T.skin) return;          // без ключевых текстур не строим
-        build(T);
-        ready = true;
-        fit();
-        /* если вкладка уже открыта — сразу поехали */
-        if(visible) start();
-      });
-    });
+    need = files.length + CRACK_N;
+    const done = ()=>{
+      if(loaded < need) return;
+      if(!T.side || !T.skin) return;        // без ключевых текстур не строим
+      build(T);
+      ready = true;
+      fit();
+      if(visible) start();
+    };
+    files.forEach(f=> loadTex(f[1], TINT, (t)=>{ T[f[0]] = t; loaded++; done(); }));
+    crackTex = new Array(CRACK_N).fill(null);
+    for(let i=0;i<CRACK_N;i++)
+      (function(i){ loadRaw('destroy_'+i+'.png', (t)=>{ crackTex[i] = t; loaded++; done(); }); })(i);
 
     window.addEventListener('resize', fit);
-    /* вкладка браузера в фоне — не жжём кадры */
     document.addEventListener('visibilitychange', ()=>{
       if(document.hidden) stop();
       else if(visible) start();
@@ -733,23 +724,27 @@ window.MC_SCENE = (function(){
     return true;
   }
 
-  /* вкладка Minecraft показана/скрыта */
+  /* вкладка Minecraft показана/скрыта. Возврат на вкладку — как
+     перезагрузка страницы: если Стив уже упал, ставим всё заново. */
   function show(on){
     visible = !!on;
     if(visible){
-      if(ready) fit();
+      if(ready){
+        if(phase === 'gone') reset();
+        fit();
+      }
       start();
     } else stop();
   }
 
   function debug(){
-    return { THREE, scene, camera, renderer, root, steve, block, crackMesh,
-             parts, shards, dust, phase, hits, ready, running,
-             stages:CRACK_STAGES, tint:{ block:TINT_BLOCK, skin:TINT_SKIN },
-             pose:{ swing:poseSwing, brk:poseBreak, idle:poseIdle },
-             arm:{ REST:ARM_REST, UP:ARM_UP, HIT:ARM_HIT, DEEP:ARM_DEEP },
-             layout:{ GROUND, STEVE_X, STEVE_Z, BLOCK_X, BLOCK_Z },
-             setCrack };
+    return { THREE, scene, camera, renderer, root, steve, parts,
+             column, floaters, crackMesh, crackTex, shards, dust,
+             phase, target, steveY, ready, running, tint:TINT,
+             stages:CRACK_N, probes:()=>probes, probeExtent,
+             layout:{ GRASS_Y, DIRT_Y, FEET, FEET_GONE, STEVE_X, STEVE_Z },
+             pose:{ mine:poseMine, fall:poseFall, land:poseLand },
+             setCrack, reset };
   }
 
   return { init, show, resize:fit, ready: ()=> ready, debug };

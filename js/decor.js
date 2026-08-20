@@ -19,6 +19,7 @@ window.TAB_DECOR = (function(){
   let root = null;
   let panes = {};        // id вкладки -> кластеры в полях (широкие экраны)
   let stripPanes = {};   // id вкладки -> полоса под механизмом (узкие)
+  let stripHost = null;  // контейнер полосы: сворачиваем, когда её нет
   let built = false;
 
   /* детерминированный шум: одинаковая грязь при каждой загрузке */
@@ -145,133 +146,6 @@ window.TAB_DECOR = (function(){
     return `<g transform="translate(${o.x},${o.y})">${s}</g>`;
   }
 
-  /* ---------- изометрический блок на решётке ----------
-     Блок задаётся не пикселями, а КЛЕТКОЙ (i,j,k): i,j — по полу,
-     k — вверх. Экранные координаты считает iso(), поэтому соседние
-     блоки стыкуются гранями точно, без зазоров и без наползания —
-     раньше шаг стопки я брал на глаз, и блоки висели друг над другом
-     с щелью.
-     Форма: шестиугольник — ромб верха плюс две боковины. Внутри
-     заливка гранями разной светлоты («свет сверху») и пиксельная
-     крошка. kind: grass / dirt / stone / plank.
-     Заливка непрозрачная (цвет бумаги), поэтому дальний блок не
-     просвечивает через ближний — порядок рисования = порядок в
-     списке, от дальнего к ближнему. ---------- */
-  const PAPER = '#f6f2e9';
-  /* Настоящая изометрия: смотрим вдоль (1,1,1). Ребро куба длиной a
-     даёт полуширину ромба S = a/√2, полувысоту H = a/√6 и
-     вертикальную стенку V = a·√(2/3). Отсюда
-       H = S/√3 ≈ 0.5774·S,   V = 2S/√3 ≈ 1.1547·S.
-     Раньше стояло H=0.5·S и V=0.82·S — стенка выходила на 29%
-     короче нужной, и куб читался как приплюснутый параллелепипед.
-     Полная высота силуэта = 2H + V = 4S/√3 ≈ 2.31·S при ширине 2S,
-     то есть отношение высоты к ширине 1.155 — как у куба в изометрии. */
-  const ISO_H = 1/Math.sqrt(3), ISO_V = 2/Math.sqrt(3);
-  const ISO = (S)=> ({
-    S, H: S*ISO_H, V: S*ISO_V,       // полуширина, полувысота ромба, стенка
-    /* центр верхнего ромба клетки (i,j,k) */
-    at(i, j, k){ return [ (i - j)*S, (i + j)*this.H - k*this.V ]; }
-  });
-
-  function mcBlock(o){
-    const S = o.s || 30, k = o.kind || 'grass';
-    const H = S*ISO_H, V = S*ISO_V;
-    const r = rng(o.seed || 5);
-    /* локальные вершины относительно центра верхнего ромба */
-    const top   = `0,${-H} ${S},0 0,${H} ${-S},0`;
-    const left  = `${-S},0 0,${H} 0,${H+V} ${-S},${V}`;
-    const right = `${S},0 0,${H} 0,${H+V} ${S},${V}`;
-    const hexa  = `${-S},0 0,${-H} ${S},0 ${S},${V} 0,${H+V} ${-S},${V}`;
-    let s = '';
-    s += `<polygon points="${hexa}" fill="${PAPER}"/>`;      /* перекрытие */
-    s += `<polygon points="${top}"   fill="${INK}" opacity=".05"/>`;
-    s += `<polygon points="${left}"  fill="${INK}" opacity=".13"/>`;
-    s += `<polygon points="${right}" fill="${INK}" opacity=".08"/>`;
-    /* крошка «пикселями» в координатах каждой грани */
-    const pix = (n, fn, op)=>{
-      let g = '';
-      for(let i=0;i<n;i++){
-        const [x,y] = fn(r(), r()), w = S*0.13;
-        g += `<rect x="${(x-w/2).toFixed(1)}" y="${(y-w*0.31).toFixed(1)}"
-               width="${w.toFixed(1)}" height="${(w*0.62).toFixed(1)}"
-               fill="${INK}" opacity="${op}"/>`;
-      }
-      return g;
-    };
-    /* u,v в [0,1] по рёбрам грани -> точка внутри неё */
-    const onTop   = (u,v)=> [ (u-v)*S*0.8, (u+v-1)*H*0.8 ];
-    const onLeft  = (u,v)=> [ -S + u*S*0.88, u*H*0.88 + V*(0.12 + v*0.76) ];
-    const onRight = (u,v)=> [  S - u*S*0.88, u*H*0.88 + V*(0.12 + v*0.76) ];
-    if(k === 'grass'){
-      s += pix(9, onTop, '.30');
-      /* травинки свисают через оба верхних ребра на боковины */
-      for(let i=0;i<8;i++){
-        const t = (i%4 + 0.5)/4, sg = i < 4 ? -1 : 1;
-        const x = sg*(1-t)*S, y = t*H;
-        s += `<path d="M${x.toFixed(1)} ${y.toFixed(1)} l0 ${(V*0.20 + r()*V*0.18).toFixed(1)}"
-                stroke="${INK}" stroke-width="1.5" opacity=".44" stroke-linecap="round"/>`;
-      }
-      s += pix(5, onLeft, '.20') + pix(4, onRight, '.16');
-    } else if(k === 'stone'){
-      s += pix(6, onTop, '.18') + pix(7, onLeft, '.24') + pix(6, onRight, '.18');
-      s += `<path d="M${(-S*0.55).toFixed(1)} ${(V*0.62).toFixed(1)} l${(S*0.3).toFixed(1)} ${(V*0.26).toFixed(1)}"
-              stroke="${INK}" stroke-width="1.3" opacity=".34"/>`;
-    } else if(k === 'plank'){
-      for(let i=1;i<4;i++){                     // доски полосами по боковинам
-        const y = V*i/4;
-        s += `<path d="M${-S} ${y.toFixed(1)} L0 ${(H+y).toFixed(1)} L${S} ${y.toFixed(1)}"
-                fill="none" stroke="${INK}" stroke-width="1.2" opacity=".34"/>`;
-      }
-      s += pix(4, onTop, '.16');
-    } else {
-      s += pix(8, onTop, '.24') + pix(7, onLeft, '.22') + pix(6, onRight, '.18');
-    }
-    /* контур: силуэт + три ребра, сходящиеся в переднем углу */
-    s += `<polygon points="${hexa}" fill="none" stroke="${INK}"
-            stroke-width="${o.sw||2.2}" stroke-linejoin="round"/>`;
-    s += `<path d="M${-S} 0 L0 ${H} L${S} 0 M0 ${H} L0 ${(H+V).toFixed(1)}"
-            fill="none" stroke="${INK}" stroke-width="${((o.sw||2.2)*0.8).toFixed(1)}"
-            stroke-linejoin="round"/>`;
-    const inner = o.bob
-      ? `<g class="dc-bob" style="animation-duration:${o.dur||4.2}s">${s}</g>` : s;
-    return `<g transform="translate(${o.x.toFixed(1)},${o.y.toFixed(1)})">${inner}</g>`;
-  }
-
-  /* ---------- Стив: та же семибоксовая фигура плоским контуром.
-     Пропорции игровые, в единицах u = s/32 (полная высота 32u):
-       голова 8×8 — y 0..8, тело 8×12 — y 8..20, руки и ноги 4×12.
-     Голова стоит ВПЛОТНУЮ на теле: раньше она была на y −4..4, а
-     тело начиналось с 8, и между ними висел зазор 4u.
-     Рука качается (dc-swing), ось — в плече; в руке ничего нет. ---------- */
-  function mcSteve(o){
-    const u = (o.s || 42)/32;
-    const B = (x,y,w,h,op)=>
-      `<rect x="${(x*u).toFixed(1)}" y="${(y*u).toFixed(1)}"
-             width="${(w*u).toFixed(1)}" height="${(h*u).toFixed(1)}"
-             fill="${INK}" fill-opacity="${op||0.07}"
-             stroke="${INK}" stroke-width="${(o.sw||2)}" stroke-linejoin="round"/>`;
-    const px = (x,y,w,h,op)=>
-      `<rect x="${(x*u).toFixed(1)}" y="${(y*u).toFixed(1)}"
-             width="${(w*u).toFixed(1)}" height="${(h*u).toFixed(1)}"
-             fill="${INK}" opacity="${op}"/>`;
-    let s = '';
-    s += B(-4, 20, 4, 12, .12);              // дальняя нога
-    s += B( 0, 20, 4, 12, .07);              // ближняя нога
-    s += B(-6,  8, 2.6, 11, .13);            // дальняя рука
-    s += B(-4,  8, 8, 12, .09);              // тело
-    s += B(-4,  0, 8, 8,  .05);              // голова: низ ровно на теле
-    /* лицо пиксельными квадратиками */
-    s += px(-2.6, 3.4, 1.5, 1.5, '.62') + px(1.1, 3.4, 1.5, 1.5, '.62');
-    s += px(-1.4, 6.2, 2.8, 0.9, '.42');
-    s += `<path d="M${(-4*u).toFixed(1)} ${(2.2*u).toFixed(1)} h${(8*u).toFixed(1)}"
-            stroke="${INK}" stroke-width="1.3" opacity=".5"/>`;   // кромка волос
-    /* ближняя рука: качается вокруг плеча, пустая */
-    const arm = B(0, 0, 2.6, 11, .07);
-    s += `<g transform="translate(${(3.4*u).toFixed(1)},${(8.6*u).toFixed(1)})">
-            <g class="dc-swing" style="animation-duration:${(o.dur||2.4)}s">${arm}</g></g>`;
-    return `<g transform="translate(${o.x.toFixed(1)},${o.y.toFixed(1)})">${s}</g>`;
-  }
-
   /* =========================================================
      Кластеры. Каждый — маленькая SVG в поле страницы:
        side — у какого поля стоит (left / right),
@@ -310,54 +184,6 @@ window.TAB_DECOR = (function(){
      ближние, иначе ближний блок окажется под дальним.
      Стив стоит на верхнем блоке: ступни ставим на центр его ромба.
      ========================================================= */
-  /* сцена из блоков: cells = [[i,j,k,kind,seed], ...], ox/oy — где
-     в системе координат SVG лежит клетка (0,0,0) */
-  function mcScene(S, ox, oy, cells, extra){
-    const G = ISO(S);
-    let out = '';
-    cells.forEach(c=>{
-      const [x,y] = G.at(c[0], c[1], c[2]);
-      out += mcBlock({ x:ox+x, y:oy+y, s:S, kind:c[3], seed:c[4],
-                       bob:c[5], dur:c[6] });
-    });
-    if(extra) out += extra(G, ox, oy);
-    return out;
-  }
-
-  /* Стив ростом ~2 блока, как в игре. Высота фигуры = s (32 единицы
-     по s/32), стенка блока V = 1.1547*S, значит s ≈ 2*V ≈ 2.3*S.
-     Ступни — на локальном y = s, ставим их в центр верхнего ромба. */
-  const steveOn = (G, ox, oy, cell, s, dur)=>{
-    const [sx, sy] = G.at(cell[0], cell[1], cell[2]);
-    return mcSteve({ x:ox+sx, y:oy+sy-s, s, dur:dur||2.2 });
-  };
-
-  function setMinecraft(){
-    return [
-      /* уступ 2×1 с двухэтажной стопкой, на верхнем блоке — Стив */
-      C('left', '16%', 130, 175, '0 0 130 175',
-        mcScene(30, 50, 94, [
-          [0,0,0,'stone', 5],
-          [0,0,1,'grass', 2],
-          [1,0,0,'grass', 9],
-        ], (G, ox, oy)=> steveOn(G, ox, oy, [0,0,1], 48))),
-      /* одиночный блок, слегка парит — «в руке у игрока» */
-      C('right', '37%', 100, 110, '0 0 100 110',
-        mcScene(34, 50, 36, [[0,0,0,'grass',14,true,4.6]])),
-      /* разрез породы: камень, земля, трава — ровной стопкой */
-      C('left', '61%', 100, 160, '0 0 100 160',
-        mcScene(30, 50, 97, [
-          [0,0,0,'stone',23],
-          [0,0,1,'dirt', 31],
-          [0,0,2,'grass',37],
-        ])),
-      /* доски + отколовшийся блок рядом */
-      C('right', '79%', 135, 120, '0 0 135 120',
-        mcScene(32, 44, 46, [[0,0,0,'plank',44]]) +
-        mcScene(18, 104, 32, [[0,0,0,'dirt',51,true,3.8]])),
-    ];
-  }
-
   /* GAME DEV: три сцепленные шестерни, поршень, стояк */
   function setGameDev(){
     return [
@@ -393,7 +219,11 @@ window.TAB_DECOR = (function(){
   }
 
   /* ключи = id вкладок из data.js */
-  const SETS = { web:setWeb, mc:setMinecraft, game:setGameDev, bio:setBio };
+  /* Ключ mc отсутствует специально: на вкладке Minecraft рисует
+     3D-сцена (js/mc-scene.js), плоские блоки и плоский Стив оттуда
+     удалены — два разных Стива на одной вкладке спорили друг с
+     другом. init() пропускает вкладки без набора. */
+  const SETS = { web:setWeb, game:setGameDev, bio:setBio };
 
   /* =========================================================
      Узкие экраны: поля страницы нет, кластеры пришлось бы либо
@@ -422,27 +252,6 @@ window.TAB_DECOR = (function(){
   /* Узкая полоса для Minecraft: 3D-сцена остаётся, но полоса ей не
      мешает — она стоит выше, между механизмом и сценой, и держит ту
      же тему: уступ блоков и Стив с киркой. */
-  /* Все группы стоят на одной «земле»: низ силуэта ≈ y 139, поэтому
-     oy у каждой свой (низ = oy + H + V). Раскиданы по всей ширине
-     560, как в остальных полосах. */
-  function stripMinecraft(){
-    return strip(
-      /* уступ со стопкой и Стивом */
-      mcScene(22, 58, 74, [
-        [0,1,0,'stone',5],  [1,1,0,'dirt', 9],
-        [0,0,0,'dirt', 17],
-        [0,0,1,'grass',2],  [1,0,0,'grass',23],
-      ], (G, ox, oy)=> steveOn(G, ox, oy, [0,0,1], 36)) +
-      /* доски и камень рядом */
-      mcScene(24, 176, 82, [[0,0,0,'plank',44], [1,0,0,'stone',61]]) +
-      /* парящий блок «в руке» */
-      mcScene(17, 290, 56, [[0,0,0,'grass',14,true,4.6]]) +
-      /* ступенька из трёх */
-      mcScene(22, 400, 87, [
-        [0,0,0,'dirt', 71], [1,0,0,'stone',77], [0,0,1,'grass',83],
-      ]) +
-      mcScene(20, 520, 103, [[0,0,0,'dirt',51]]));
-  }
   function stripGameDev(){
     return strip(
       cog({ x:60, y:62, r:32, teeth:12, tooth:10, dur:22, seed:23, grime:true }) +
@@ -459,7 +268,7 @@ window.TAB_DECOR = (function(){
       valve({ x:404, y:92, r:13, dur:18, ccw:true }) +
       gauge({ x:486, y:66, r:21, dur:6.4 }));
   }
-  const STRIPS = { web:stripWeb, mc:stripMinecraft, game:stripGameDev, bio:stripBio };
+  const STRIPS = { web:stripWeb, game:stripGameDev, bio:stripBio };
 
   /* =========================================================
      Публичный API
@@ -485,7 +294,7 @@ window.TAB_DECOR = (function(){
   function init(ids){
     root = document.getElementById('tabDecor');
     if(!root || built) return;
-    const stripHost = document.getElementById('tabDecorStrip');
+    stripHost = document.getElementById('tabDecorStrip');
     panes = {}; stripPanes = {};
     (ids || Object.keys(SETS)).forEach(id=>{
       const make = SETS[id];
@@ -516,6 +325,11 @@ window.TAB_DECOR = (function(){
       panes[k].classList.toggle('is-on', k === id));
     Object.keys(stripPanes).forEach(k=>
       stripPanes[k].classList.toggle('is-on', k === id));
+    /* Полосы у вкладки может не быть вовсе (Minecraft — там 3D-сцена).
+       Панели внутри лежат абсолютно, высоту контейнеру задаёт
+       aspect-ratio, поэтому пустой контейнер всё равно держал 202px
+       пустоты между механизмом и сценой. Сворачиваем его. */
+    if(stripHost) stripHost.classList.toggle('is-empty', !stripPanes[id]);
   }
 
   return { init, show };
